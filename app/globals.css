@@ -330,6 +330,16 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
    library by when in a client website build you'd reach for something, so it
    gets top billing (drawn first) and its own amber tint, distinct from
    projects (violet) and languages (green). */
+/* Page sections get a cyan tint: a fourth axis, distinct from build phase
+   (amber), projects (violet) and languages (green). */
+.catrail.sections { padding-bottom: 10px; align-items: center; }
+.cat-pill.sect { border-color: rgba(34,211,238,.28); color: #8be9f7; background: rgba(34,211,238,.07); }
+.cat-pill.sect.active {
+  background: linear-gradient(135deg, #22d3ee, #06b6d4);
+  color: #06070a; border-color: transparent; font-weight: 650;
+}
+.pill.sect { background: rgba(34,211,238,.1); color: #8be9f7; border-color: rgba(34,211,238,.25); }
+
 .catrail.stages { padding-bottom: 10px; align-items: center; }
 .cat-pill.stage { border-color: rgba(251,191,36,.28); color: var(--amber); background: rgba(251,191,36,.07); }
 .cat-pill.stage.active {

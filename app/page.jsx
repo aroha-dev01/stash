@@ -3,15 +3,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ChatSheet from './chat';
 import { useSwipeDown, useBackToClose } from './swipe';
-import { stageLabel } from '@/lib/taxonomy';
+import { stageLabel, SECTIONS as SECTION_ORDER } from '@/lib/taxonomy';
 
 const RECENTS_KEY = 'stash.recents';
 
 const LOOKS_LIKE_URL = /^(https?:\/\/\S+|(?:[\w-]+\.)+[a-z]{2,}(?:\/\S*)?)$/i;
+// "how-it-works" -> "How it works", "cta" -> "CTA"
+const sectionLabel = (s) =>
+  s === 'cta' || s === 'faq'
+    ? s.toUpperCase()
+    : String(s || '').replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase());
+
 const fmtNum = (n) => (n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n));
 
 const EMPTY_FACETS = {
   categories: [], collections: [], languages: [], types: [], tags: [], sources: [], pricing: [], stages: [],
+  sections: [], styles: [], effects: [],
   stats: { total: 0, oss: 0, starred: 0, errored: 0, working: 0, dead: 0, unchecked: 0, repos: 0, stars_total: 0 },
 };
 
@@ -25,7 +32,7 @@ export default function Page() {
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState({
     category: null, collection: null, language: null, tags: [], pricing: null,
-    source: null, status: null, oss: false, starred: false, dead: false, stage: null,
+    source: null, status: null, oss: false, starred: false, dead: false, stage: null, section: null,
   });
   const [sort, setSort] = useState('newest');
   const [limit, setLimit] = useState(40);
@@ -55,6 +62,7 @@ export default function Page() {
     const p = new URLSearchParams();
     if (query) p.set('q', query);
     if (filters.stage) p.set('stage', filters.stage);
+    if (filters.section) p.set('section', filters.section);
     if (filters.category) p.set('category', filters.category);
     if (filters.collection) p.set('collection', filters.collection);
     if (filters.language) p.set('language', filters.language);
@@ -274,7 +282,7 @@ export default function Page() {
   const clearAll = () =>
     setFilters({
       category: null, collection: null, language: null, tags: [], pricing: null,
-      source: null, status: null, oss: false, starred: false, dead: false, stage: null,
+      source: null, status: null, oss: false, starred: false, dead: false, stage: null, section: null,
     });
 
   const activeFilterCount =
@@ -284,6 +292,7 @@ export default function Page() {
 
   let crumb = 'All';
   if (query) crumb = 'Results';
+  else if (filters.section) crumb = 'For the ' + sectionLabel(filters.section);
   else if (filters.language) crumb = filters.language;
   else if (filters.collection) crumb = filters.collection;
   else if (filters.dead) crumb = 'Broken links';
@@ -427,6 +436,32 @@ export default function Page() {
               {s.label}<span className='n'>{s.count}</span>
             </button>
           ))}
+        </div>
+      ) : null}
+
+      {/* Page sections: "what do I have for a weak pricing block". Ordered
+          roughly top-to-bottom of a page rather than by count, because that is
+          how you walk a client site. Only sections with tagged tools show. */}
+      {facets.sections.length > 0 ? (
+        <div className='catrail sections'>
+          <span className='rail-label'>Section</span>
+          <button
+            className={filters.section ? 'cat-pill sect' : 'cat-pill sect active'}
+            onClick={() => patchFilters({ section: null })}
+          >
+            Any
+          </button>
+          {SECTION_ORDER.map((key) => facets.sections.find((s) => s.name === key))
+            .filter(Boolean)
+            .map((s) => (
+              <button
+                key={s.name}
+                className={filters.section === s.name ? 'cat-pill sect active' : 'cat-pill sect'}
+                onClick={() => patchFilters({ section: filters.section === s.name ? null : s.name })}
+              >
+                {sectionLabel(s.name)}<span className='n'>{s.count}</span>
+              </button>
+            ))}
         </div>
       ) : null}
 
@@ -714,6 +749,7 @@ export default function Page() {
 function Chips({ filters, onClear, onToggleTag }) {
   const chips = [];
   if (filters.stage) chips.push({ label: stageLabel(filters.stage), clear: () => onClear({ stage: null }) });
+  if (filters.section) chips.push({ label: sectionLabel(filters.section), clear: () => onClear({ section: null }) });
   if (filters.category) chips.push({ label: filters.category, clear: () => onClear({ category: null }) });
   filters.tags.forEach((t) => chips.push({ label: '#' + t, clear: () => onToggleTag(t) }));
   if (filters.pricing) chips.push({ label: filters.pricing, clear: () => onClear({ pricing: null }) });
@@ -986,6 +1022,17 @@ function Detail({ id, categories, allCollections, onClose, onChanged, onPickTag,
 
       {link.summary ? (
         <div className='d-section'><div className='d-label'>What it is</div><div className='d-body'>{link.summary}</div></div>
+      ) : null}
+
+      {(link.sections || []).length || (link.effect_kind || []).length || (link.style_tags || []).length ? (
+        <div className='d-section'>
+          <div className='d-label'>Use it on</div>
+          <div className='tag-cloud'>
+            {(link.sections || []).map((s) => <span key={'s' + s} className='pill sect'>{sectionLabel(s)}</span>)}
+            {(link.effect_kind || []).map((e) => <span key={'e' + e} className='pill'>{e.replace(/-/g, ' ')}</span>)}
+            {(link.style_tags || []).map((t) => <span key={'t' + t} className='pill ref'>{t.replace(/-/g, ' ')}</span>)}
+          </div>
+        </div>
       ) : null}
 
       {link.install ? (

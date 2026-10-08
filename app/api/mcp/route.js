@@ -3,7 +3,7 @@ import { db, shape } from '@/lib/supabase';
 import { embed } from '@/lib/embed';
 import { enrichLink } from '@/lib/enrich';
 import { normalizeUrl } from '@/lib/util';
-import { inferSource, CATEGORIES, STAGES, stageFor, stageLabel } from '@/lib/taxonomy';
+import { inferSource, CATEGORIES, STAGES, stageFor, stageLabel, SECTIONS, STYLES, EFFECTS } from '@/lib/taxonomy';
 import { buildContext, SYSTEM } from '@/lib/context';
 import { chatJSON } from '@/lib/llm';
 
@@ -25,7 +25,7 @@ export const maxDuration = 60;
 // on its own and tells you so in its capabilities.
 
 const PROTOCOL = '2025-06-18';
-const SERVER = { name: 'stash', title: 'Stash', version: '2.2.0' };
+const SERVER = { name: 'stash', title: 'Stash', version: '2.3.0' };
 
 /* ------------------------------------------------------------- resources */
 
@@ -212,6 +212,12 @@ async function complete(ref, argument) {
     values = CATEGORIES;
   } else if (name === 'stage') {
     values = STAGES.map((s) => s.key);
+  } else if (name === 'section') {
+    values = SECTIONS;
+  } else if (name === 'style') {
+    values = STYLES;
+  } else if (name === 'effect') {
+    values = EFFECTS;
   } else if (name === 'type') {
     values = ['library', 'saas', 'cli', 'app', 'reference', 'template', 'mcp-server', 'dataset', 'article', 'other'];
   } else if (name === 'language' || name === 'collection' || name === 'works_with') {
@@ -270,6 +276,29 @@ const READ_TOOLS = [
             'ship-operate (hosting, testing, security), growth-client-ops (analytics, marketing, no-code), ' +
             'or reference (background reading). Call list_categories to see counts per stage first. ' +
             'Use this to browse "what do I have for the design phase of a client site" style questions.',
+        },
+        section: {
+          type: 'string',
+          description:
+            'Only tools tagged for one part of a website: navbar, hero, features, how-it-works, ' +
+            'product-showcase, logos, testimonials, stats, pricing, faq, cta, contact, footer, ' +
+            'about-team, gallery-portfolio, blog-content, forms-signup, dashboard-ui, background, ' +
+            'page-transitions, cursor-interactions, loaders, whole-page. Use this when improving a ' +
+            'specific section of a site, e.g. section "pricing" when the pricing block looks weak.',
+        },
+        style: {
+          type: 'string',
+          description:
+            'Only tools suited to a visual style: minimal, editorial, brutalist, playful, luxury, ' +
+            'corporate, futuristic-tech, glassmorphism, retro, organic, bold-colorful, dark-mode. ' +
+            'Match the style of the site you are working on.',
+        },
+        effect: {
+          type: 'string',
+          description:
+            'Only tools giving a kind of effect: scroll-animation, 3d-webgl, micro-interaction, ' +
+            'hover-effect, page-transition, text-animation, typography, layout-grid, color-palette, ' +
+            'imagery-illustration, iconography, video-media, background-effect, cursor-effect, data-viz, copywriting.',
         },
         type: {
           type: 'string',
@@ -440,6 +469,14 @@ const READ_TOOLS = [
       type: 'object',
       properties: {
         query: { type: 'string', description: 'The look, feeling or pattern you are after.' },
+        section: {
+          type: 'string',
+          description: 'Optional: only references for one part of a page, e.g. hero, pricing, footer, testimonials.',
+        },
+        style: {
+          type: 'string',
+          description: 'Optional: only references in one visual style, e.g. minimal, editorial, luxury, brutalist.',
+        },
         limit: { type: 'number', description: 'Max results, 1-15. Defaults to 6.' },
       },
       required: ['query'],
@@ -560,6 +597,13 @@ function render(link) {
     // Ship & Operate. Derived from category, so every link has one for free.
     stage: stageFor(l.category),
     stage_label: stageLabel(stageFor(l.category)),
+    // Which parts of a website this helps build (hero, pricing, footer...),
+    // the effect it gives, the look it suits, and how you use it. This is
+    // what a section-by-section site review matches against.
+    sections: l.sections || [],
+    effects: l.effect_kind || [],
+    styles: l.style_tags || [],
+    usage_format: l.usage_format || null,
     tags: l.tags,
     pricing: l.pricing,
     open_source: !!l.is_open_source,
@@ -605,7 +649,9 @@ function render(link) {
 async function searchTools(args) {
   const query = String(args.query || '').trim();
   const stage = STAGES.find((s) => s.key === String(args.stage || '').trim())?.key || null;
-  if (!query && !stage) throw new Error('query is required (or pass stage to browse a build phase)');
+  if (!query && !stage && !args.section && !args.style && !args.effect) {
+    throw new Error('query is required (or pass stage, section, style or effect to browse)');
+  }
 
   const limit = Math.min(Math.max(Number(args.limit) || 8, 1), 25);
   const q_embedding = query ? await embed(query) : null;
@@ -635,6 +681,9 @@ async function searchTools(args) {
     // Broken links are hidden by default; recommending a dead link is worse
     // than returning one fewer result.
     f_dead: args.include_broken ? null : false,
+    f_section: args.section || null,
+    f_style: args.style || null,
+    f_effect: args.effect || null,
     sort_by: 'newest',
     max_rows: stageCats ? Math.max(limit * 6, 60) : limit,
     skip_rows: 0,
@@ -1086,6 +1135,9 @@ async function findInspiration(args) {
       f_collection: null, f_dead: false, f_works_with: null,
       f_type: kind, f_language: null, f_min_stars: null,
       f_maintained: false, f_used_only: false,
+      f_section: args.section || null,
+      f_style: args.style || null,
+      f_effect: null,
       sort_by: 'newest', max_rows: limit, skip_rows: 0,
     });
     out.push(...(data || []));
@@ -1104,6 +1156,8 @@ async function findInspiration(args) {
         preview_image: s.image || null,
         what_it_is: s.summary,
         why_look: (s.use_cases || [])[0] || null,
+        sections: s.sections || [],
+        styles: s.style_tags || [],
         tags: s.tags,
       };
     });
@@ -1177,6 +1231,13 @@ async function listCategories() {
         .reduce((sum, c) => sum + c.count, 0),
     })),
     stages_hint: 'Pass a stage key as the stage argument to search_tools to browse just that build phase.',
+    sections: (f.sections || []).map((x) => ({ name: x.name, count: x.count })),
+    sections_hint:
+      'Website sections tools are tagged for (hero, pricing, footer...). Pass one as the section ' +
+      'argument to search_tools or find_inspiration to get only tools for that part of a page.',
+    styles: (f.styles || []).map((x) => ({ name: x.name, count: x.count })),
+    effects: (f.effects || []).map((x) => ({ name: x.name, count: x.count })),
+    section_tagged: f.stats?.section_tagged ?? 0,
   };
 }
 
@@ -1283,6 +1344,9 @@ async function handle(msg, auth) {
           '6. When they describe a new client project or ask "what do I have for [design/backend/auth/etc]"',
           '   — call search_tools with the stage argument, or list_categories to see the stages breakdown,',
           '   to browse tools by which phase of a website build they belong to.',
+          '7. When working on ONE part of a page (the hero, the pricing block, the footer) — call',
+          '   search_tools or find_inspiration with the section argument, plus style to match the',
+          '   site\'s look. Every entry lists the sections it helps with, its effects and its styles.',
           '',
           '',
           'CHOOSING BETWEEN SIMILAR TOOLS:',
