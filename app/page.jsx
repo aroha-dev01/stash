@@ -162,6 +162,12 @@ export default function Page() {
     fetch('/api/meta').then((r) => r.json()).then(setMeta).catch(() => {});
   }, [loadFacets]);
 
+  // /?open=42 opens that tool's detail panel — used by audit tool cards.
+  useEffect(() => {
+    const open = Number(new URLSearchParams(window.location.search).get('open'));
+    if (Number.isFinite(open) && open > 0) setDetailId(open);
+  }, []);
+
   // Cards fill themselves in as enrichment finishes.
   useEffect(() => {
     const working = items.some((l) => l.status === 'pending' || l.status === 'enriching');
@@ -323,6 +329,7 @@ export default function Page() {
           <span className='brand-name'>stash</span>
         </div>
         <div className='topbar-right'>
+          <a className='ghost-btn' href='/audit' style={{ textDecoration: 'none' }}>Audit a site</a>
           <button className='icon-btn' onClick={() => setSheet('filters')} aria-label='Filters'>
             <svg viewBox='0 0 24 24'><path d='M3 6h18M7 12h10M10 18h4' /></svg>
             {activeFilterCount > 0 ? <span className='badge' /> : null}
@@ -363,6 +370,13 @@ export default function Page() {
             <svg viewBox='0 0 24 24'><path d='M20 6L9 17l-5-5' /></svg>
             {saving ? 'Saving' : 'Save'}
           </button>
+        ) : null}
+        {/* A pasted link can be a tool to save OR a client site to review. */}
+        {isUrl && !saving ? (
+          <a className='paste-btn' href={'/audit?url=' + encodeURIComponent(input.trim())}>
+            <svg viewBox='0 0 24 24'><path d='M3 12h4l3-8 4 16 3-8h4' /></svg>
+            Audit
+          </a>
         ) : null}
       </div>
 

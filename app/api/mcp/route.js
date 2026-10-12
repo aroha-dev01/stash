@@ -6,6 +6,7 @@ import { normalizeUrl } from '@/lib/util';
 import { inferSource, CATEGORIES, STAGES, stageFor, stageLabel, SECTIONS, STYLES, EFFECTS } from '@/lib/taxonomy';
 import { buildContext, SYSTEM } from '@/lib/context';
 import { chatJSON } from '@/lib/llm';
+import { createAudit, advance, loadAudit } from '@/lib/audit/run';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,7 +26,7 @@ export const maxDuration = 60;
 // on its own and tells you so in its capabilities.
 
 const PROTOCOL = '2025-06-18';
-const SERVER = { name: 'stash', title: 'Stash', version: '2.3.0' };
+const SERVER = { name: 'stash', title: 'Stash', version: '2.4.0' };
 
 /* ------------------------------------------------------------- resources */
 
@@ -498,6 +499,40 @@ const READ_TOOLS = [
         note: { type: 'string', description: 'Optional: how it worked out, or what it was chosen over.' },
       },
       required: ['id', 'project'],
+    },
+  },
+  {
+    name: 'audit_site',
+    title: 'Audit a client website',
+    creates: true,
+    description:
+      'Point Stash at a live website (usually a client site the user is building or redesigning). It ' +
+      'splits the page into sections, scores each for problems (weak headline, no clear CTA, wall of ' +
+      'text, flat visuals, generic copy, missing proof, static feel), and writes 2-3 concrete redesign ' +
+      'directions for the weakest sections, each built on tools from the user\'s own library, with a ' +
+      'ready-to-paste build prompt. Call this whenever the user shares a site URL and wants it improved, ' +
+      'reviewed or redesigned. A full audit takes 1-3 minutes: if it is not finished when this returns, ' +
+      'call get_audit with the id to continue it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'The page to audit, e.g. https://client.com' },
+        client: { type: 'string', description: 'Optional client or project name, used to file the tools they pick.' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'get_audit',
+    title: 'Continue or read an audit',
+    creates: true,
+    description:
+      'Continues an unfinished audit (each call does up to ~45 seconds of work) and returns its current ' +
+      'state: sections, scores, problems and redesign directions. Call repeatedly until status is "done".',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'number', description: 'Audit id from audit_site.' } },
+      required: ['id'],
     },
   },
   {
@@ -1279,8 +1314,68 @@ async function saveTool(args) {
   return { saved: true, tool: render(fresh || data) };
 }
 
+const APP_URL = 'https://stash-cyatra.vercel.app';
+
+/** Compact, agent-friendly view of an audit. */
+function renderAudit(a) {
+  const tools = a.tools || {};
+  return {
+    id: a.id,
+    status: a.status,
+    progress: a.step_detail || undefined,
+    error: a.error || undefined,
+    url: a.url,
+    client: a.client || undefined,
+    view: APP_URL + '/audit/' + a.id,
+    site: a.site ? { framework: a.site.framework, fonts: a.site.fonts, colours: a.site.colours } : undefined,
+    health: a.summary?.health,
+    page_basics: a.summary?.basics,
+    sections: (a.sections || []).map((s) => ({
+      position: s.position + 1,
+      type: s.type,
+      heading: s.heading,
+      needs_work: s.needs_work != null ? Number(s.needs_work) : undefined,
+      problems: s.issues?.length ? s.issues : undefined,
+      verdict: s.status === 'skipped' ? 'solid' : s.status === 'designed' ? 'redesign' : s.status,
+      diagnosis: s.suggestion?.diagnosis || undefined,
+      better_headline: s.suggestion?.copy?.headline || undefined,
+      directions: (s.suggestion?.directions || []).map((d) => ({
+        title: d.title,
+        idea: d.idea,
+        effort: d.effort,
+        tools: (d.tool_ids || []).map((id) => tools[id]).filter(Boolean)
+          .map((t) => ({ id: t.id, name: t.title, url: t.url, preview_image: t.image || undefined, format: t.usage_format })),
+        build_prompt: d.prompt,
+      })),
+    })),
+    show_the_user:
+      a.status === 'done'
+        ? 'Lead with the health score and the weakest sections. For each, give the diagnosis and the directions with their tools and previews; offer the build prompt for the one they like. Link the full report: ' + APP_URL + '/audit/' + a.id
+        : 'Still running. Tell the user it is in progress and call get_audit with id ' + a.id + ' again.',
+  };
+}
+
+async function auditSite(args) {
+  const url = String(args.url || '').trim();
+  if (!url) throw new Error('url is required');
+  const id = await createAudit(url, args.client);
+  await advance(id, 48000);
+  return renderAudit(await loadAudit(id));
+}
+
+async function getAudit(args) {
+  const id = Number(args.id);
+  if (!Number.isFinite(id)) throw new Error('id must be a number');
+  await advance(id, 48000);
+  const a = await loadAudit(id);
+  if (!a) throw new Error('No audit with id ' + id);
+  return renderAudit(a);
+}
+
 async function callTool(name, args, canWrite) {
   switch (name) {
+    case 'audit_site': return auditSite(args);
+    case 'get_audit': return getAudit(args);
     case 'search_tools': return searchTools(args);
     case 'get_tool': return getTool(args);
     case 'list_categories': return listCategories();
@@ -1347,6 +1442,10 @@ async function handle(msg, auth) {
           '7. When working on ONE part of a page (the hero, the pricing block, the footer) — call',
           '   search_tools or find_inspiration with the section argument, plus style to match the',
           '   site\'s look. Every entry lists the sections it helps with, its effects and its styles.',
+          '8. When the user shares a website URL (a client site, their own site, a competitor) and wants',
+          '   it reviewed, improved or redesigned — call audit_site. It returns section-by-section problems',
+          '   and redesign directions built on their saved tools. If status is not "done", call get_audit',
+          '   with the id until it is; tell the user it is running rather than waiting silently.',
           '',
           '',
           'CHOOSING BETWEEN SIMILAR TOOLS:',
@@ -1398,14 +1497,15 @@ async function handle(msg, auth) {
       // Annotations let a client decide what is safe to run unattended.
       // Everything here reads; only save_tool writes, and it is idempotent
       // because saving the same URL twice returns the existing entry.
-      const withHints = (t, write) => ({
+      const withHints = ({ creates, ...t }, write) => ({
         ...t,
         annotations: {
           title: t.title,
-          readOnlyHint: !write,
+          readOnlyHint: !write && !creates,
           destructiveHint: false,
-          idempotentHint: true,
-          openWorldHint: false, // everything comes from this library, not the web
+          idempotentHint: !creates,
+          // audit_site reads a site on the open web; everything else is the library.
+          openWorldHint: !!creates,
         },
       });
       return ok(id, {
