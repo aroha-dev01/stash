@@ -1008,3 +1008,50 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
   .au-score { width: 76px; height: 76px; }
   .au-need-bar { width: 50px; }
 }
+
+/* audit: lighthouse, plan, checks, ask */
+.au-lh { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0; }
+.au-ring {
+  width: 92px; padding: 12px 6px; border-radius: 16px; text-align: center;
+  background: var(--bg-1); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px;
+}
+.au-ring b { font-family: var(--mono); font-size: 24px; line-height: 1; }
+.au-ring span { font-size: 11px; color: var(--text-3); }
+.au-vitals { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 260px; }
+.au-note { margin: 14px 0; padding: 10px 14px; border-radius: var(--r-md); background: var(--bg-1); border: 1px dashed var(--line-2); color: var(--text-3); font-size: 13px; }
+
+.au-plan { margin: 22px 0; padding: 18px; border-radius: var(--r-lg); background: var(--bg-1); border: 1px solid var(--line); box-shadow: var(--e1); }
+.au-plan-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.au-plan-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.au-plan-actions a.au-pick { text-decoration: none; }
+.au-overview { color: var(--text); line-height: 1.65; margin: 0 0 12px; }
+.au-fixes { list-style: none; padding: 0; margin: 14px 0 10px; display: flex; flex-direction: column; gap: 10px; counter-reset: fix; }
+.au-fix { position: relative; padding: 12px 14px 12px 44px; border-radius: var(--r-md); background: var(--bg-2); border: 1px solid var(--line); counter-increment: fix; }
+.au-fix::before {
+  content: counter(fix); position: absolute; left: 12px; top: 12px; width: 22px; height: 22px; border-radius: 7px;
+  display: grid; place-items: center; font-family: var(--mono); font-size: 11.5px; background: var(--bg-3); color: var(--text-2);
+}
+.au-fix.tier-now { border-left: 3px solid var(--red); }
+.au-fix.tier-next { border-left: 3px solid var(--amber); }
+.au-fix-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.au-fix b a { color: inherit; text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }
+.au-fix p { margin: 5px 0 0; color: var(--text-2); font-size: 13.5px; line-height: 1.55; }
+.au-fix-how span { color: var(--accent); font-weight: 600; }
+.au-tier { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 3px 8px; border-radius: 6px; }
+.au-tier.tier-now { background: rgba(248,113,113,.14); color: var(--red); }
+.au-tier.tier-next { background: rgba(251,191,36,.14); color: var(--amber); }
+.au-tier.tier-later { background: var(--bg-3); color: var(--text-3); }
+.au-impact { margin-left: auto; width: 70px; height: 5px; border-radius: 3px; background: var(--bg-3); overflow: hidden; }
+.au-impact i { display: block; height: 100%; background: linear-gradient(90deg, var(--amber), var(--red)); }
+
+.au-checks { margin: 18px 0; }
+.au-checks summary { cursor: pointer; color: var(--text-2); font-size: 13.5px; margin-bottom: 8px; }
+.au-check { display: flex; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.au-check p { margin: 4px 0 0; color: var(--text-2); font-size: 13px; line-height: 1.5; }
+.au-sev { flex: none; width: 64px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding-top: 3px; }
+.sev-critical { color: var(--red); } .sev-high { color: #fb923c; } .sev-medium { color: var(--amber); } .sev-low { color: var(--text-3); }
+
+.au-ask { margin: 26px 0; padding: 18px; border-radius: var(--r-lg); background: var(--bg-1); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+.au-ask-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.au-answer { white-space: pre-wrap; line-height: 1.65; color: var(--text); padding: 14px; border-radius: var(--r-md); background: var(--bg-2); border: 1px solid var(--line); }
+.au-head-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }

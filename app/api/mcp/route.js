@@ -26,7 +26,7 @@ export const maxDuration = 60;
 // on its own and tells you so in its capabilities.
 
 const PROTOCOL = '2025-06-18';
-const SERVER = { name: 'stash', title: 'Stash', version: '2.4.0' };
+const SERVER = { name: 'stash', title: 'Stash', version: '2.5.0' };
 
 /* ------------------------------------------------------------- resources */
 
@@ -1329,6 +1329,14 @@ function renderAudit(a) {
     view: APP_URL + '/audit/' + a.id,
     site: a.site ? { framework: a.site.framework, fonts: a.site.fonts, colours: a.site.colours } : undefined,
     health: a.summary?.health,
+    lighthouse_mobile: a.psi?.scores || (a.psi?.skipped ? 'not measured: ' + a.psi.skipped : undefined),
+    core_web_vitals: a.psi?.vitals ? Object.fromEntries(Object.entries(a.psi.vitals).map(([k, v]) => [k, v.value])) : undefined,
+    overview: a.plan?.overview || undefined,
+    client_summary: a.plan?.client_summary || undefined,
+    fix_first: (a.plan?.items || []).slice(0, 12).map((i) => ({
+      tier: i.tier, area: i.category, issue: i.title, why: i.why, fix: i.fix, effort: i.effort, impact: i.impact, wcag: i.wcag || undefined,
+    })),
+    client_report: a.status === 'done' ? APP_URL + '/audit/' + a.id + '/report' : undefined,
     page_basics: a.summary?.basics,
     sections: (a.sections || []).map((s) => ({
       position: s.position + 1,
@@ -1350,7 +1358,7 @@ function renderAudit(a) {
     })),
     show_the_user:
       a.status === 'done'
-        ? 'Lead with the health score and the weakest sections. For each, give the diagnosis and the directions with their tools and previews; offer the build prompt for the one they like. Link the full report: ' + APP_URL + '/audit/' + a.id
+        ? 'Lead with the overview and the "fix_first" list (tier "now" first), then the weakest sections with their diagnosis and directions (tools, previews, build prompt). Offer the client_report link for sharing with the client. Full report: ' + APP_URL + '/audit/' + a.id
         : 'Still running. Tell the user it is in progress and call get_audit with id ' + a.id + ' again.',
   };
 }

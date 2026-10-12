@@ -6,8 +6,13 @@ import { useParams } from 'next/navigation';
 // One audit: the page split into sections, each scored, the weak ones with
 // redesign directions built on tools from the library.
 
-const STEPS = ['capturing', 'classifying', 'designing', 'done'];
-const STEP_LABEL = { queued: 'Starting', capturing: 'Reading the page', classifying: 'Scoring each section', designing: 'Designing fixes', done: 'Done' };
+const STEPS = ['capturing', 'measuring', 'classifying', 'designing', 'planning', 'done'];
+const STEP_LABEL = {
+  queued: 'Starting', capturing: 'Reading the page', measuring: 'Testing on a phone',
+  classifying: 'Scoring each section', designing: 'Designing fixes', planning: 'Ranking what to fix', done: 'Done',
+};
+const TIER = { now: 'Fix now', next: 'Next', later: 'Later' };
+const LH_LABEL = { performance: 'Speed', accessibility: 'Accessibility', seo: 'SEO', 'best-practices': 'Best practices' };
 
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 const band = (s) => (s >= 75 ? 'good' : s >= 50 ? 'ok' : 'bad');
@@ -19,7 +24,32 @@ export default function AuditPage() {
   const [err, setErr] = useState(null);
   const [toast, setToast] = useState(null);
   const [shotFailed, setShotFailed] = useState(0);
+  const [showAll, setShowAll] = useState(false);
+  const [question, setQuestion] = useState('');
+  const [answer, setAnswer] = useState(null);
+  const [asking, setAsking] = useState(false);
   const alive = useRef(true);
+
+  async function ask(q) {
+    const text = (q ?? question).trim();
+    if (!text || asking) return;
+    setQuestion(text);
+    setAsking(true);
+    setAnswer(null);
+    try {
+      const res = await fetch('/api/audit/' + id + '/ask', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ question: text }),
+      });
+      const j = await res.json();
+      setAnswer(j.answer || j.error || 'No answer.');
+    } catch (e) {
+      setAnswer('Could not reach Stash: ' + e.message);
+    } finally {
+      setAsking(false);
+    }
+  }
 
   useEffect(() => {
     alive.current = true;
@@ -59,6 +89,20 @@ export default function AuditPage() {
     if (picked != null && j.tools?.length) flash('Filed ' + j.tools.length + ' tool(s) under ' + j.filed_under);
   }
 
+  // Re-audit after changes ship: same URL and client, fresh run, so the two
+  // reports can be compared side by side.
+  async function rerun() {
+    flash('Starting a fresh audit…');
+    const res = await fetch('/api/audit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: audit.url, client: audit.client }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok && j.id) window.location.href = '/audit/' + j.id;
+    else flash(j.error || 'Could not start');
+  }
+
   function copy(text) {
     navigator.clipboard.writeText(text).then(() => flash('Prompt copied'), () => flash('Could not copy'));
   }
@@ -85,6 +129,12 @@ export default function AuditPage() {
             {(site.fonts || []).slice(0, 3).map((f) => <span key={f} className='pill'>{f}</span>)}
             {(site.colours || []).slice(0, 6).map((c) => <span key={c} className='au-swatch' title={c} style={{ background: c }} />)}
           </div>
+          {!running ? (
+            <div className='au-head-actions'>
+              <button className='ghost-btn' onClick={rerun}>Re-run audit</button>
+              {audit.status === 'done' ? <a className='ghost-btn' href={'/audit/' + audit.id + '/report'} target='_blank' rel='noopener noreferrer' style={{ textDecoration: 'none' }}>Client report ↗</a> : null}
+            </div>
+          ) : null}
         </div>
         {audit.summary?.health != null ? (
           <div className={'au-score ' + band(audit.summary.health)}>
@@ -96,7 +146,7 @@ export default function AuditPage() {
       {running ? (
         <div className='au-progress'>
           <div className='au-steps'>
-            {STEPS.slice(0, 3).map((s, i) => (
+            {STEPS.slice(0, 5).map((s, i) => (
               <span key={s} className={i < stepIdx ? 'done' : i === stepIdx ? 'on' : ''}>{STEP_LABEL[s]}</span>
             ))}
           </div>
@@ -105,6 +155,61 @@ export default function AuditPage() {
       ) : null}
 
       {audit.status === 'error' ? <div className='au-err'>The audit stopped: {audit.error}</div> : null}
+
+      {audit.psi?.scores ? (
+        <section className='au-lh'>
+          {Object.entries(audit.psi.scores).map(([k, v]) => (
+            <div key={k} className={'au-ring ' + band(v)}>
+              <b>{v}</b><span>{LH_LABEL[k] || k}</span>
+            </div>
+          ))}
+          {audit.psi.vitals ? (
+            <div className='au-vitals'>
+              {Object.entries(audit.psi.vitals).map(([k, v]) => v.value ? (
+                <span key={k} className={'pill ' + (v.score >= 0.9 ? 'oss' : v.score < 0.5 ? 'err' : '')}>{k} {v.value}</span>
+              ) : null)}
+            </div>
+          ) : null}
+        </section>
+      ) : audit.psi?.skipped ? (
+        <div className='au-note'>Speed &amp; contrast not measured: {audit.psi.skipped}</div>
+      ) : null}
+
+      {audit.plan ? (
+        <section className='au-plan'>
+          <div className='au-plan-head'>
+            <h2 className='au-h2' style={{ margin: 0 }}>Fix first</h2>
+            <div className='au-plan-actions'>
+              <span className='au-muted'>{audit.plan.counts.now} now · {audit.plan.counts.next} next · {audit.plan.counts.later} later</span>
+              <a className='au-pick' href={'/audit/' + audit.id + '/report'} target='_blank' rel='noopener noreferrer'>Client report ↗</a>
+            </div>
+          </div>
+          {audit.plan.overview ? <p className='au-overview'>{audit.plan.overview}</p> : null}
+          {(audit.plan.strengths || []).length ? (
+            <div className='tag-cloud'>{audit.plan.strengths.map((s) => <span key={s} className='pill oss'>✓ {s}</span>)}</div>
+          ) : null}
+          <ol className='au-fixes'>
+            {(audit.plan.items || []).slice(0, showAll ? 100 : 10).map((it) => (
+              <li key={it.key} className={'au-fix tier-' + it.tier}>
+                <div className='au-fix-head'>
+                  <span className={'au-tier tier-' + it.tier}>{TIER[it.tier]}</span>
+                  <span className='pill'>{it.category}</span>
+                  <span className='au-muted'>{it.effort}</span>
+                  <div className='au-impact' title={'Impact ' + it.impact + ' / 3'}><i style={{ width: Math.round((it.impact / 3) * 100) + '%' }} /></div>
+                </div>
+                <b>{it.section_id ? <a href={'#s' + it.section_id}>{it.title}</a> : it.title}</b>
+                <p>{it.why}</p>
+                <p className='au-fix-how'><span>Fix:</span> {it.fix}{it.wcag ? ' · WCAG ' + it.wcag : ''}</p>
+              </li>
+            ))}
+          </ol>
+          {(audit.plan.items || []).length > 10 ? (
+            <button className='ghost-btn' onClick={() => setShowAll((v) => !v)}>
+              {showAll ? 'Show top 10' : 'Show all ' + audit.plan.items.length}
+            </button>
+          ) : null}
+        </section>
+      ) : null}
 
       {audit.summary ? (
         <section className='au-summary'>
@@ -123,6 +228,14 @@ export default function AuditPage() {
             </div>
           ) : null}
         </section>
+      ) : null}
+
+      {audit.psi?.mobile_screenshot ? (
+        <details className='au-shot'>
+          <summary>On a phone (as Google sees it)</summary>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={audit.psi.mobile_screenshot} alt='Mobile screenshot' style={{ maxWidth: 360 }} />
+        </details>
       ) : null}
 
       {shot ? (
@@ -153,9 +266,48 @@ export default function AuditPage() {
         </>
       ) : null}
 
+      {(audit.checks || []).length ? (
+        <details className='au-checks'>
+          <summary>All technical checks ({audit.checks.length})</summary>
+          {audit.checks.map((c) => (
+            <div key={c.id} className='au-check'>
+              <span className={'au-sev sev-' + c.severity}>{c.severity}</span>
+              <div>
+                <b>{c.title}</b>
+                <p>{c.why}</p>
+                <p className='au-fix-how'><span>Fix:</span> {c.fix}{c.wcag ? ' · WCAG ' + c.wcag : ''}</p>
+              </div>
+            </div>
+          ))}
+        </details>
+      ) : null}
+
+      {audit.status === 'done' ? (
+        <section className='au-ask'>
+          <div className='d-label'>Ask about this audit</div>
+          <div className='au-ask-row'>
+            <input
+              className='au-input'
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') ask(); }}
+              placeholder='e.g. What can I fix in one hour? Why is the FAQ flagged?'
+            />
+            <button className='au-go' onClick={() => ask()} disabled={asking || !question.trim()}>{asking ? 'Thinking…' : 'Ask'}</button>
+          </div>
+          <div className='tag-cloud'>
+            {['What should I fix in the first hour?', 'Explain the top 3 problems to my client in simple words', 'Which issues hurt enquiries the most?'].map((q) => (
+              <button key={q} className='tag-chip' onClick={() => ask(q)}>{q}</button>
+            ))}
+          </div>
+          {answer ? <div className='au-answer'>{answer}</div> : null}
+        </section>
+      ) : null}
+
       {audit.engines?.decide || audit.engines?.design_used ? (
         <div className='au-engines'>
           Scored by {audit.engines.decide || '—'} · Designed by {audit.engines.design_used || audit.engines.design || '—'}
+          {audit.plan?.impact_engine ? ' · Prioritised by ' + audit.plan.impact_engine : ''}
         </div>
       ) : null}
 
@@ -168,7 +320,7 @@ function SectionCard({ s, tools, onPick, onCopy }) {
   const sug = s.suggestion || {};
   const pct = Math.round((Number(s.needs_work) || 0) * 100);
   return (
-    <article className='au-card'>
+    <article className='au-card' id={'s' + s.id}>
       <div className='au-card-head'>
         <span className='au-pos'>{s.position + 1}</span>
         <div className='au-card-title'>
