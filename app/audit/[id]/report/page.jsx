@@ -2,116 +2,170 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { howtoFor } from '@/lib/audit/howto';
+import '../../dz.css';
 
-// A clean, light, printable report for the client. No jargon, no tool names,
-// no internal scores they would not understand — just what was found, why it
-// matters to their visitors, and what will be done. "Save as PDF" from the
-// browser's print dialog gives a shareable file.
+// The client's report: light, printable, no jargon and no internal scores.
+// What was found, why it matters to their visitors, what we will do, pictures
+// of the sections we will improve and the visual inspiration behind them.
+// "Save as PDF" from the browser's print dialog gives a shareable file.
 
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 const TIER = { now: 'Priority', next: 'Next', later: 'Later' };
+const GROUP = { now: 'Do first', next: 'Next', later: 'Later, when time allows' };
 const LH_LABEL = { performance: 'Speed on mobile', accessibility: 'Accessibility', seo: 'Search visibility', 'best-practices': 'Technical health' };
 const label = (s) => (s === 'cta' || s === 'faq' ? s.toUpperCase() : String(s || 'Section').replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()));
+const col = (v) => (v >= 80 ? '#067647' : v >= 55 ? '#b54708' : '#b42318');
 
-const CSS = [
-  'body{background:#fff !important;color:#16181d !important}',
-  '.rp{max-width:820px;margin:0 auto;padding:48px 28px 80px;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.6}',
-  '.rp h1{font-size:30px;letter-spacing:-.02em;margin:6px 0 4px}',
-  '.rp h2{font-size:15px;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;margin:38px 0 12px}',
-  '.rp .kick{color:#6b7280;font-size:13px;text-transform:uppercase;letter-spacing:.08em}',
-  '.rp .lead{font-size:16.5px;color:#1f2937}',
-  '.rp .scores{display:flex;gap:12px;flex-wrap:wrap;margin:18px 0}',
-  '.rp .score{flex:1 1 140px;border:1px solid #e5e7eb;border-radius:14px;padding:14px;text-align:center}',
-  '.rp .score b{display:block;font-size:28px}',
-  '.rp .score span{font-size:12px;color:#6b7280}',
-  '.rp .good{color:#15803d}.rp .ok{color:#b45309}.rp .bad{color:#b91c1c}',
-  '.rp ol{padding-left:20px}.rp li{margin:0 0 16px}',
-  '.rp .tag{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:6px;background:#f3f4f6;color:#374151;margin-right:6px}',
-  '.rp .tag.now{background:#fee2e2;color:#b91c1c}',
-  '.rp p{margin:4px 0}',
-  '.rp .muted{color:#6b7280;font-size:13.5px}',
-  '.rp .card{border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin:0 0 12px}',
-  '.rp .print{position:fixed;right:20px;top:20px;padding:9px 16px;border-radius:10px;border:0;background:#111827;color:#fff;font-weight:600;cursor:pointer}',
-  '@media print{.rp .print{display:none}.rp{padding:0}}',
-].join('\n');
+function Pic({ src, tall }) {
+  const [bad, setBad] = useState(false);
+  if (bad) return null;
+  return (
+    <span className='snip' style={tall ? { aspectRatio: '4/3' } : undefined}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt='' referrerPolicy='no-referrer' onError={() => setBad(true)} />
+    </span>
+  );
+}
+
+function Inspo({ tool }) {
+  const [bad, setBad] = useState(false);
+  return (
+    <a className='tile' href={tool.url || '#'} target='_blank' rel='noopener noreferrer'>
+      <div className='img'>
+        {tool.image && !bad
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={tool.image} alt='' referrerPolicy='no-referrer' onError={() => setBad(true)} />
+          : <b>{String(tool.title || '?').slice(0, 2)}</b>}
+      </div>
+      <div className='body'><b className='t' style={{ fontSize: 13.5 }}>{tool.title}</b></div>
+    </a>
+  );
+}
 
 export default function ClientReport() {
   const { id } = useParams();
   const [a, setA] = useState(null);
   const [err, setErr] = useState(null);
+  const [ticked, setTicked] = useState({});
 
   useEffect(() => {
     fetch('/api/audit/' + id).then((r) => r.json()).then((j) => (j.error ? setErr(j.error) : setA(j))).catch((e) => setErr(e.message));
   }, [id]);
 
-  if (err) return <div className='rp'><style>{CSS}</style>{err}</div>;
-  if (!a) return <div className='rp'><style>{CSS}</style>Loading…</div>;
-  if (a.status !== 'done') return <div className='rp'><style>{CSS}</style>This audit is still running. Open it in Stash to finish, then come back.</div>;
+  if (err) return <div className='dz'><div style={{ padding: 40 }}>{err}</div></div>;
+  if (!a) return <div className='dz'><div style={{ padding: 40 }}>Loading…</div></div>;
+  if (a.status !== 'done') return <div className='dz'><div style={{ padding: 40 }}>This audit is still running. Open it in Stash to finish, then come back.</div></div>;
 
   const plan = a.plan || {};
+  const ctx = { host: hostOf(a.url), url: a.url };
   const dismissed = (k) => plan.feedback?.[k]?.verdict === 'down';
   // Only what you have not marked "not an issue", most important first.
-  const items = (plan.items || []).filter((i) => i.tier !== 'later' && !dismissed(i.key)).slice(0, 10);
-  const sections = [];
-  const band = (v) => (v >= 75 ? 'good' : v >= 50 ? 'ok' : 'bad');
+  const items = (plan.items || []).filter((i) => !dismissed(i.key)).slice(0, 15);
+  const groups = ['now', 'next', 'later'].map((t) => [t, items.filter((i) => i.tier === t)]).filter((g) => g[1].length);
+  const sections = (a.sections || []).filter((s) => s.status === 'designed' && s.suggestion?.diagnosis).slice(0, 6);
+  const scores = [];
+  if (a.summary?.health != null) scores.push(['Design & content', a.summary.health]);
+  Object.entries(a.psi?.scores || {}).slice(0, 3).forEach(([k, v]) => scores.push([LH_LABEL[k] || k, v]));
+  if (scores.length < 4 && a.summary?.site_scores?.security != null) scores.push(['Security', a.summary.site_scores.security]);
+  const goTo = (hid) => document.getElementById(hid)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const toc = [['r-sum', 'Summary'], ['r-work', 'What works'], ...groups.map((g) => ['r-' + g[0], GROUP[g[0]]]), ...(sections.length ? [['r-sections', 'Sections']] : []), ['r-go', 'Next steps']];
+  const nowItems = items.filter((i) => i.tier === 'now');
 
   return (
-    <div className='rp'>
-      <style>{CSS}</style>
-      <button className='print' onClick={() => window.print()}>Save as PDF</button>
+    <div className='dz'>
+      <div className='repwrap'>
+        <div className='toc2'>
+          <b style={{ fontSize: 12, color: 'var(--soft)', padding: '0 10px 6px' }}>ON THIS PAGE</b>
+          {toc.map(([k, n]) => <button key={k} onClick={() => goTo(k)}>{n}</button>)}
+          <div style={{ height: 10 }} />
+          <button onClick={() => window.print()}>Save as PDF</button>
+          <button onClick={() => navigator.clipboard.writeText(window.location.href)}>Copy link</button>
+        </div>
 
-      <div className='kick'>Website review · {new Date(a.updated_at || a.created_at).toLocaleDateString()}</div>
-      <h1>{a.client || a.title || hostOf(a.url)}</h1>
-      <div className='muted'>{a.url}</div>
+        <div className='rep'>
+          <div className='cover'>
+            <small>Website review · {new Date(a.updated_at || a.created_at).toLocaleDateString()}</small>
+            <h1>{a.client || a.title || hostOf(a.url)}</h1>
+            <p><a href={a.url} target='_blank' rel='noopener noreferrer' style={{ color: '#fff' }}>{a.url} ↗</a></p>
+          </div>
+          <div className='sc' style={{ gridTemplateColumns: 'repeat(' + Math.max(scores.length, 1) + ',1fr)' }}>
+            {scores.map(([n, v]) => <div key={n}><b style={{ color: col(v) }}>{v}</b><span>{n}</span></div>)}
+          </div>
 
-      <div className='scores'>
-        {a.summary?.health != null ? (
-          <div className='score'><b className={band(a.summary.health)}>{a.summary.health}</b><span>Design &amp; content</span></div>
-        ) : null}
-        {Object.entries(a.psi?.scores || {}).map(([k, v]) => (
-          <div key={k} className='score'><b className={band(v)}>{v}</b><span>{LH_LABEL[k] || k}</span></div>
-        ))}
+          <p id='r-sum' style={{ marginTop: 28, fontSize: 16.5, maxWidth: '64ch' }}>{plan.client_summary || plan.overview}</p>
+
+          {(plan.strengths || []).length ? (
+            <>
+              <h2 id='r-work'>What is already working</h2>
+              <ul className='s'>{plan.strengths.map((s) => <li key={s}>{s}</li>)}</ul>
+            </>
+          ) : <span id='r-work' />}
+
+          {groups.map(([t, list]) => (
+            <div key={t}>
+              <h2 id={'r-' + t}>{GROUP[t]}</h2>
+              {list.map((it) => {
+                const how = howtoFor(it.key, it.category, ctx);
+                const learn = how?.docs?.[0]?.[1];
+                return (
+                  <div key={it.key} className='rec'>
+                    <span className={'tier ' + t} style={{ alignSelf: 'start' }}>{TIER[t]}</span>
+                    <div>
+                      <b>{it.title}</b>
+                      <p>{it.why}</p>
+                      <p className='do'><b style={{ fontWeight: 600 }}>What we will do:</b> {it.client_fix || it.fix}</p>
+                    </div>
+                    {learn ? <a className='more' href={learn} target='_blank' rel='noopener noreferrer'>Learn more ↗</a> : <span />}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+
+          {sections.length ? (
+            <>
+              <h2 id='r-sections'>Page sections we will improve</h2>
+              {sections.map((s) => {
+                const d = s.suggestion?.directions?.[s.picked ?? 0];
+                const previews = s.signals?.previews || [];
+                const refs = (s.suggestion?.visuals || []).filter((v) => v.label !== 'weak' && a.tools?.[v.tool_id]).slice(0, 3);
+                return (
+                  <div key={s.id} className='zcard' style={{ padding: '16px 18px', margin: '0 0 14px' }}>
+                    <b>{label(s.type)}{s.heading ? ' — “' + s.heading + '”' : ''}</b>
+                    {previews.length ? <div className='snips'>{previews.map((p) => <Pic key={p} src={p} />)}</div> : null}
+                    <p style={{ margin: '12px 0 0' }}>{s.suggestion.diagnosis}</p>
+                    {d ? <p style={{ margin: '6px 0 0', color: 'var(--mute)', fontSize: 14 }}><b style={{ color: 'var(--ink)' }}>Plan:</b> {d.title}. {d.idea}</p> : null}
+                    {refs.length ? (
+                      <>
+                        <div className='snips-cap'>Visual inspiration</div>
+                        <div className='tgrid' style={{ gridTemplateColumns: 'repeat(3,1fr)', marginTop: 8 }}>
+                          {refs.map((v) => <Inspo key={v.tool_id} tool={a.tools[v.tool_id]} />)}
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </>
+          ) : null}
+
+          <div className='next' id='r-go'>
+            <h2>Next steps</h2>
+            <p>Tick what you would like us to start with. We will confirm timing and send updates as each item is done.</p>
+            <div className='tasks'>
+              {nowItems.map((it) => (
+                <div key={it.key} className={'tk' + (ticked[it.key] ? ' on' : '')} style={{ cursor: 'pointer' }} onClick={() => setTicked((t) => ({ ...t, [it.key]: !t[it.key] }))}>
+                  <i>{ticked[it.key] ? '✓' : ''}</i><span>{it.title}</span>
+                </div>
+              ))}
+            </div>
+            <div className='tools' style={{ marginTop: 16 }}>
+              <button className='btn pri' onClick={() => window.print()}>Save as PDF</button>
+            </div>
+          </div>
+        </div>
       </div>
-
-      {plan.client_summary ? <p className='lead'>{plan.client_summary}</p> : null}
-
-      {(plan.strengths || []).length ? (
-        <>
-          <h2>What is already working</h2>
-          <ul>{plan.strengths.map((s) => <li key={s}>{s}</li>)}</ul>
-        </>
-      ) : null}
-
-      {items.length ? (
-        <>
-          <h2>What we recommend fixing</h2>
-          <ol>
-            {items.map((it) => (
-              <li key={it.key}>
-                <span className={'tag ' + it.tier}>{TIER[it.tier]}</span><b>{it.title}</b>
-                <p>{it.why}</p>
-                <p className='muted'>What we will do: {it.client_fix || it.fix}</p>
-              </li>
-            ))}
-          </ol>
-        </>
-      ) : null}
-
-      {sections.length ? (
-        <>
-          <h2>Page sections we will improve</h2>
-          {sections.map((s) => {
-            const d = s.suggestion?.directions?.[s.picked ?? 0];
-            return (
-              <div key={s.id} className='card'>
-                <b>{label(s.type)}{s.heading ? ' — “' + s.heading + '”' : ''}</b>
-                <p>{s.suggestion?.diagnosis}</p>
-                {d ? <p className='muted'>Plan: {d.title}. {d.idea}</p> : null}
-              </div>
-            );
-          })}
-        </>
-      ) : null}
     </div>
   );
 }

@@ -1,10 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { howtoFor } from '@/lib/audit/howto';
+import '../dz.css';
 
-// One audit: the page split into sections, each scored, the weak ones with
-// redesign directions built on tools from the library.
+// One audit, laid out as a structured report: scores that link to their
+// checks, fixes that open into how-tos, sections with pictures from the page,
+// and the library tools suggested for them. Every block has an anchor, so any
+// part can be linked to or jumped to.
 
 const STEPS = ['capturing', 'measuring', 'classifying', 'designing', 'planning', 'done'];
 const STEP_LABEL = {
@@ -13,10 +17,12 @@ const STEP_LABEL = {
 };
 const TIER = { now: 'Fix now', next: 'Next', later: 'Later' };
 const LH_LABEL = { performance: 'Speed', accessibility: 'Accessibility', seo: 'SEO', 'best-practices': 'Best practices' };
+const SITE_SCORES = [['security', 'Security', 'Security'], ['privacy', 'Privacy', 'Privacy'], ['seo', 'SEO checks', 'SEO'], ['performance_checks', 'Speed checks', 'Performance']];
 
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
-const band = (s) => (s >= 75 ? 'good' : s >= 50 ? 'ok' : 'bad');
+const col = (v) => (v >= 80 ? '#067647' : v >= 55 ? '#b54708' : '#b42318');
 const label = (s) => (s === 'cta' || s === 'faq' ? s.toUpperCase() : String(s || 'section').replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase()));
+const pillCls = (v) => (v === 'strong' || v === 'g' ? 'g' : v === 'weak' || v === 'r' ? 'r' : v === 'b' ? 'b' : 'a');
 
 export default function AuditPage() {
   const { id } = useParams();
@@ -24,32 +30,16 @@ export default function AuditPage() {
   const [err, setErr] = useState(null);
   const [toast, setToast] = useState(null);
   const [shotFailed, setShotFailed] = useState(0);
-  const [showAll, setShowAll] = useState(false);
+  const [openFix, setOpenFix] = useState(null);
+  const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState(null);
   const [asking, setAsking] = useState(false);
+  const [active, setActive] = useState('overview');
   const alive = useRef(true);
 
-  async function ask(q) {
-    const text = (q ?? question).trim();
-    if (!text || asking) return;
-    setQuestion(text);
-    setAsking(true);
-    setAnswer(null);
-    try {
-      const res = await fetch('/api/audit/' + id + '/ask', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ question: text }),
-      });
-      const j = await res.json();
-      setAnswer(j.answer || j.error || 'No answer.');
-    } catch (e) {
-      setAnswer('Could not reach Stash: ' + e.message);
-    } finally {
-      setAsking(false);
-    }
-  }
+  const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 2200); };
 
   useEffect(() => {
     alive.current = true;
@@ -75,22 +65,55 @@ export default function AuditPage() {
     return () => { alive.current = false; };
   }, [id]);
 
-  const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 2200); };
+  // Deep links: #fix-3 opens that fix, #s12 or #checks-Security scroll to it.
+  useEffect(() => {
+    if (!audit) return;
+    const go = () => {
+      const h = decodeURIComponent(window.location.hash.slice(1));
+      if (!h) return;
+      const m = /^fix-(\d+)$/.exec(h);
+      if (m) setOpenFix(Number(m[1]));
+      setTimeout(() => document.getElementById(h)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+    };
+    go();
+    window.addEventListener('hashchange', go);
+    return () => window.removeEventListener('hashchange', go);
+  }, [!!audit]);
+
+  // Which block the sticky rail highlights.
+  useEffect(() => {
+    if (!audit) return;
+    const ids = ['overview', 'fix', 'sections', 'tools', 'checks', 'ask'];
+    const onScroll = () => {
+      let cur = ids[0];
+      for (const i of ids) { const e = document.getElementById(i); if (e && e.getBoundingClientRect().top < 160) cur = i; }
+      setActive(cur);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [!!audit]);
+
+  async function ask(q) {
+    const text = (q ?? question).trim();
+    if (!text || asking) return;
+    setQuestion(text); setAsking(true); setAnswer(null);
+    try {
+      const res = await fetch('/api/audit/' + id + '/ask', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ question: text }) });
+      const j = await res.json();
+      setAnswer(j.answer || j.error || 'No answer.');
+    } catch (e) { setAnswer('Could not reach Stash: ' + e.message); } finally { setAsking(false); }
+  }
 
   async function pick(section, idx) {
     const picked = section.picked === idx ? null : idx;
     setAudit((a) => ({ ...a, sections: a.sections.map((s) => (s.id === section.id ? { ...s, picked } : s)) }));
-    const res = await fetch('/api/audit/' + id, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ section_id: section.id, picked }),
-    });
+    const res = await fetch('/api/audit/' + id, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ section_id: section.id, picked }) });
     const j = await res.json().catch(() => ({}));
     if (picked != null && j.tools?.length) flash('Filed ' + j.tools.length + ' tool(s) under ' + j.filed_under);
   }
 
-  // 👍/👎 on a finding. Stash learns per-issue thresholds from these, so
-  // problem types you keep rejecting need more certainty next time.
+  // 👍/👎 on a finding. Stash learns per-issue thresholds from these.
   async function vote(itemKey, verdict, issueLabel) {
     const current = audit.plan?.feedback?.[itemKey]?.verdict || null;
     const next = current === verdict ? null : verdict;
@@ -99,391 +122,537 @@ export default function AuditPage() {
       if (next) fb[itemKey] = { verdict: next }; else delete fb[itemKey];
       return { ...a, plan: { ...a.plan, feedback: fb } };
     });
-    await fetch('/api/audit/' + id + '/feedback', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ item_key: itemKey, verdict: next, issue_label: issueLabel || null }),
-    }).catch(() => {});
-    if (next === 'down') flash('Marked as not an issue — Stash will weigh this in future audits');
+    await fetch('/api/audit/' + id + '/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ item_key: itemKey, verdict: next, issue_label: issueLabel || null }) }).catch(() => {});
+    if (next === 'down') flash('Marked as not an issue. Stash will weigh this in future audits');
   }
 
-  // Re-audit after changes ship: same URL and client, fresh run, so the two
-  // reports can be compared side by side.
   async function rerun() {
     flash('Starting a fresh audit…');
-    const res = await fetch('/api/audit', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ url: audit.url, client: audit.client }),
-    });
+    const res = await fetch('/api/audit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: audit.url, client: audit.client }) });
     const j = await res.json().catch(() => ({}));
     if (res.ok && j.id) window.location.href = '/audit/' + j.id;
     else flash(j.error || 'Could not start');
   }
 
-  function copy(text) {
-    navigator.clipboard.writeText(text).then(() => flash('Prompt copied'), () => flash('Could not copy'));
-  }
+  const copyText = (text, msg) => navigator.clipboard.writeText(text).then(() => flash(msg || 'Copied'), () => flash('Could not copy'));
+  const anchorLink = (hash) => copyText(window.location.origin + window.location.pathname + '#' + hash, 'Link copied');
 
-  if (err) return <Shell><div className='au-err'>{err}</div></Shell>;
-  if (!audit) return <Shell><div className='au-muted'>Loading…</div></Shell>;
+  const site = audit?.site || {};
+  const url = audit?.url || '';
+  const ctx = { host: hostOf(url), url };
+  const sections = audit?.sections || [];
+  const toFix = sections.filter((s) => s.status === 'designed' || s.status === 'classified' || s.status === 'error');
+  const solid = sections.filter((s) => s.status === 'skipped');
+  const secById = useMemo(() => Object.fromEntries(sections.map((s) => [s.id, s])), [audit]);
 
-  const site = audit.site || {};
+  // Every library tool suggested anywhere in the audit, with the sections it was suggested for.
+  const suggested = useMemo(() => {
+    const m = new Map();
+    for (const s of sections) {
+      const sug = s.suggestion || {};
+      const add = (tid, via) => {
+        const t = audit?.tools?.[tid];
+        if (!t) return;
+        const e = m.get(tid) || { tool: t, sections: new Map(), label: null, why: null, borrow: null, dirs: 0 };
+        e.sections.set(s.id, s);
+        if (via?.label && (!e.label || via.label === 'strong' || (via.label === 'decent' && e.label === 'weak'))) { e.label = via.label; e.why = via.why; e.borrow = via.borrow; }
+        if (via?.dir) e.dirs += 1;
+        m.set(tid, e);
+      };
+      (sug.visuals || []).forEach((v) => add(v.tool_id, v));
+      (sug.directions || []).forEach((d) => (d.tool_ids || []).forEach((tid) => add(tid, { dir: true })));
+    }
+    const rank = { strong: 0, decent: 1, weak: 3, null: 2 };
+    return [...m.values()].sort((a, b) => (rank[a.label] - rank[b.label]) || (b.sections.size - a.sections.size));
+  }, [audit]);
+
+  if (err) return <Frame><div className='err'>{err}</div></Frame>;
+  if (!audit) return <Frame><div className='sub'>Loading…</div></Frame>;
+
   const running = audit.status !== 'done' && audit.status !== 'error';
   const stepIdx = STEPS.indexOf(audit.status);
   const shot = shotFailed === 0 ? site.screenshot : shotFailed === 1 ? site.screenshot_fallback : null;
-  const toFix = audit.sections.filter((s) => s.status === 'designed' || s.status === 'classified' || s.status === 'error');
-  const solid = audit.sections.filter((s) => s.status === 'skipped');
+  const plan = audit.plan;
+  const health = audit.summary?.health;
+  const items = (plan?.items || []);
+  const dismissed = (k) => plan?.feedback?.[k]?.verdict === 'down';
+  const shown = items.map((it, i) => ({ ...it, n: i + 1 })).filter((it) => (filter === 'all' || it.tier === filter) && (!query || (it.title + it.why + it.category).toLowerCase().includes(query.toLowerCase())));
+  const cats = [...new Set((audit.checks || []).map((c) => c.category || 'Other'))];
+  const rail = [['overview', 'Overview', ''], ['fix', 'Fix first', items.length || ''], ['sections', 'Sections', sections.length || ''], ['tools', 'Suggested tools', suggested.length || ''], ['checks', 'Technical checks', (audit.checks || []).length || ''], ['ask', 'Ask', '']];
+  const scores = SITE_SCORES.filter(([k]) => audit.summary?.site_scores?.[k] != null).map(([k, name, cat]) => ({ name, cat, v: audit.summary.site_scores[k] }));
 
   return (
-    <Shell>
-      <section className='au-head'>
-        <div className='au-head-text'>
-          <div className='au-kicker'>{audit.client ? audit.client + ' · ' : ''}{hostOf(audit.url)}</div>
-          <h1>{audit.title || hostOf(audit.url)}</h1>
-          <a className='au-link' href={audit.url} target='_blank' rel='noopener noreferrer'>{audit.url}</a>
-          <div className='au-facts'>
-            {site.framework ? <span className='pill'>{site.framework}</span> : null}
-            {(site.fonts || []).slice(0, 3).map((f) => <span key={f} className='pill'>{f}</span>)}
-            {(site.colours || []).slice(0, 6).map((c) => <span key={c} className='au-swatch' title={c} style={{ background: c }} />)}
-          </div>
-          {site.judgement ? (
-            <div className='au-facts'>
-              <span className='pill sect'>{String(site.judgement.business_type || '').replace(/-/g, ' ')}</span>
-              <span className='pill sect'>goal: {String(site.judgement.contact_goal || '').replace(/-/g, ' ')}</span>
-              {site.judgement.offer_clarity != null ? (
-                <span className={'pill ' + (site.judgement.offer_clarity >= 0.66 ? 'oss' : site.judgement.offer_clarity < 0.34 ? 'err' : '')}>
-                  offer clarity {Math.round(site.judgement.offer_clarity * 100)}%
-                </span>
-              ) : null}
-              {site.judgement.proof_on_page != null ? (
-                <span className={'pill ' + (site.judgement.proof_on_page >= 0.6 ? 'oss' : 'err')}>
-                  {site.judgement.proof_on_page >= 0.6 ? 'proof on page' : 'little proof on page'}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-          {audit.summary?.site_scores ? (
-            <div className='au-facts'>
-              {[['security', 'Security'], ['privacy', 'Privacy'], ['seo', 'SEO checks'], ['performance_checks', 'Speed checks']]
-                .filter(([k]) => audit.summary.site_scores[k] != null)
-                .map(([k, label]) => {
-                  const v = audit.summary.site_scores[k];
-                  return <span key={k} className={'pill ' + (v >= 80 ? 'oss' : v < 55 ? 'err' : '')}>{label} {v}</span>;
-                })}
-              {site.network?.tls?.days_left != null ? <span className='pill'>cert {site.network.tls.days_left}d left</span> : null}
-              {site.network?.cdn ? <span className='pill'>{site.network.cdn}</span> : null}
-              {site.network?.ttfb_ms ? <span className='pill'>server {Math.round(site.network.ttfb_ms)} ms</span> : null}
-              {(site.network?.trackers || []).length ? <span className='pill'>{site.network.trackers.length} tracker{site.network.trackers.length > 1 ? 's' : ''}</span> : null}
-            </div>
-          ) : null}
-          {site.visual && !site.visual.skipped ? (
-            <div className='au-facts'>
-              {site.visual.look ? <span className='au-muted'>Looks: {site.visual.look}</span> : null}
-              <span className='pill'>imagery: {String(site.visual.imagery).replace(/-/g, ' ')}</span>
-              <span className={'pill ' + (site.visual.hierarchy === 'weak' ? 'err' : site.visual.hierarchy === 'strong' ? 'oss' : '')}>hierarchy {site.visual.hierarchy}</span>
-              <span className={'pill ' + (site.visual.density === 'crowded' ? 'err' : '')}>{site.visual.density}</span>
-              {(site.visual.issues || []).map((k) => <span key={k} className='pill err'>{k.replace(/-/g, ' ')}</span>)}
-            </div>
-          ) : site.visual?.skipped ? <div className='au-muted'>Visual read skipped: {site.visual.skipped}</div> : null}
-          {!running ? (
-            <div className='au-head-actions'>
-              <button className='ghost-btn' onClick={rerun}>Re-run audit</button>
-              {audit.status === 'done' ? <a className='ghost-btn' href={'/audit/' + audit.id + '/report'} target='_blank' rel='noopener noreferrer' style={{ textDecoration: 'none' }}>Client report ↗</a> : null}
-            </div>
-          ) : null}
-        </div>
-        {audit.summary?.health != null ? (
-          <div className={'au-score ' + band(audit.summary.health)}>
-            <b>{audit.summary.health}</b><span>health</span>
-          </div>
-        ) : null}
-      </section>
-
-      {running ? (
-        <div className='au-progress'>
-          <div className='au-steps'>
-            {STEPS.slice(0, 5).map((s, i) => (
-              <span key={s} className={i < stepIdx ? 'done' : i === stepIdx ? 'on' : ''}>{STEP_LABEL[s]}</span>
-            ))}
-          </div>
-          <div className='au-muted'>{audit.step_detail || STEP_LABEL[audit.status] || 'Working'}… this takes a minute or two.</div>
-        </div>
-      ) : null}
-
-      {audit.status === 'error' ? <div className='au-err'>The audit stopped: {audit.error}</div> : null}
-
-      {audit.psi?.scores ? (
-        <section className='au-lh'>
-          {Object.entries(audit.psi.scores).map(([k, v]) => (
-            <div key={k} className={'au-ring ' + band(v)}>
-              <b>{v}</b><span>{LH_LABEL[k] || k}</span>
-            </div>
+    <Frame client={audit.client} host={hostOf(url)} extra={
+      <>
+        <button className='btn' onClick={() => copyText(window.location.href, 'Link copied')}>Copy link</button>
+        {!running ? <button className='btn' onClick={rerun}>Re-run</button> : null}
+        {audit.status === 'done' ? <a className='btn pri' href={'/audit/' + audit.id + '/report'} target='_blank' rel='noopener noreferrer'>Client report ↗</a> : null}
+      </>
+    }>
+      <div className='wrap'>
+        <nav className='rail'>
+          {rail.map(([k, name, n]) => (
+            <a key={k} href={'#' + k} className={active === k ? 'on' : ''}>{name}<small>{n}</small></a>
           ))}
-          {audit.psi.vitals ? (
-            <div className='au-vitals'>
-              {Object.entries(audit.psi.vitals).map(([k, v]) => v.value ? (
-                <span key={k} className={'pill ' + (v.score >= 0.9 ? 'oss' : v.score < 0.5 ? 'err' : '')}>{k} {v.value}</span>
-              ) : null)}
-            </div>
-          ) : null}
-        </section>
-      ) : audit.psi?.skipped ? (
-        <div className='au-note'>Speed &amp; contrast not measured: {audit.psi.skipped}</div>
-      ) : null}
+          <div className='sep' />
+          <a className='ext' href={url} target='_blank' rel='noopener noreferrer'>Open live site ↗</a>
+          <a className='ext' href='/audit'>All audits</a>
+          <a className='ext' href='/'>Tool library</a>
+        </nav>
 
-      {audit.plan ? (
-        <section className='au-plan'>
-          <div className='au-plan-head'>
-            <h2 className='au-h2' style={{ margin: 0 }}>Fix first</h2>
-            <div className='au-plan-actions'>
-              <span className='au-muted'>{audit.plan.counts.now} now · {audit.plan.counts.next} next · {audit.plan.counts.later} later</span>
-              <a className='au-pick' href={'/audit/' + audit.id + '/report'} target='_blank' rel='noopener noreferrer'>Client report ↗</a>
-            </div>
-          </div>
-          {audit.plan.overview ? <p className='au-overview'>{audit.plan.overview}</p> : null}
-          {(audit.plan.strengths || []).length ? (
-            <div className='tag-cloud'>{audit.plan.strengths.map((s) => <span key={s} className='pill oss'>✓ {s}</span>)}</div>
-          ) : null}
-          <ol className='au-fixes'>
-            {(audit.plan.items || []).slice(0, showAll ? 100 : 10).map((it) => {
-              const fb = audit.plan.feedback?.[it.key]?.verdict;
-              return (
-              <li key={it.key} className={'au-fix tier-' + it.tier + (fb === 'down' ? ' dismissed' : '')}>
-                <div className='au-fix-head'>
-                  <span className={'au-tier tier-' + it.tier}>{fb === 'down' ? 'Not an issue' : TIER[it.tier]}</span>
-                  <span className='pill'>{it.category}</span>
-                  <span className='au-muted'>{it.effort}</span>
-                  <div className='au-impact' title={'Impact ' + it.impact + ' / 3'}><i style={{ width: Math.round((it.impact / 3) * 100) + '%' }} /></div>
-                  <div className='au-vote'>
-                    <button className={fb === 'up' ? 'on' : ''} onClick={() => vote(it.key, 'up')} title='Right call'>👍</button>
-                    <button className={fb === 'down' ? 'on' : ''} onClick={() => vote(it.key, 'down')} title='Not an issue'>👎</button>
-                  </div>
+        <main>
+          <section id='overview' className='zcard pad'>
+            <div className='head'>
+              <div>
+                <div className='eyebrow'>{audit.client ? audit.client + ' · ' : ''}{hostOf(url)}</div>
+                <h1>{audit.title || hostOf(url)}</h1>
+                <a className='sub' href={url} target='_blank' rel='noopener noreferrer'>{url} ↗</a>
+                <div className='pills'>
+                  {site.framework ? <span className='zpill'>{site.framework}</span> : null}
+                  {(site.fonts || []).slice(0, 3).map((f) => <span key={f} className='zpill'>{f}</span>)}
+                  {(site.colours || []).slice(0, 6).map((c) => <span key={c} title={c} style={{ width: 18, height: 18, borderRadius: 6, background: c, border: '1px solid var(--line)', display: 'inline-block' }} />)}
                 </div>
-                <b>{it.section_id ? <a href={'#s' + it.section_id}>{it.title}</a> : it.title}</b>
-                <p>{it.why}</p>
-                <p className='au-fix-how'><span>Fix:</span> {it.fix}{it.wcag ? ' · WCAG ' + it.wcag : ''}</p>
-              </li>
-              );
-            })}
-          </ol>
-          {(audit.plan.items || []).length > 10 ? (
-            <button className='ghost-btn' onClick={() => setShowAll((v) => !v)}>
-              {showAll ? 'Show top 10' : 'Show all ' + audit.plan.items.length}
-            </button>
-          ) : null}
-        </section>
-      ) : null}
-
-      {audit.summary ? (
-        <section className='au-summary'>
-          <div>
-            <div className='d-label'>Most common problems</div>
-            <div className='tag-cloud'>
-              {(audit.summary.common_issues || []).length
-                ? audit.summary.common_issues.map((c) => <span key={c.issue} className='pill err'>{c.issue} · {c.sections}</span>)
-                : <span className='au-muted'>Nothing recurring.</span>}
-            </div>
-          </div>
-          {(audit.summary.basics || []).length ? (
-            <div>
-              <div className='d-label'>Page basics</div>
-              <div className='tag-cloud'>{audit.summary.basics.map((b) => <span key={b} className='pill ref'>{b}</span>)}</div>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-
-      {audit.psi?.mobile_screenshot ? (
-        <details className='au-shot'>
-          <summary>On a phone (as Google sees it)</summary>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={audit.psi.mobile_screenshot} alt='Mobile screenshot' style={{ maxWidth: 360 }} />
-        </details>
-      ) : null}
-
-      {shot ? (
-        <details className='au-shot'>
-          <summary>Full-page screenshot</summary>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={shot} alt={'Screenshot of ' + hostOf(audit.url)} loading='lazy' onError={() => setShotFailed((n) => n + 1)} />
-        </details>
-      ) : null}
-
-      {toFix.length ? <h2 className='au-h2'>Sections to improve</h2> : null}
-      {toFix.map((s) => (
-        <SectionCard key={s.id} s={s} tools={audit.tools} onPick={pick} onCopy={copy}
-          feedback={audit.plan?.feedback || {}} onVote={audit.plan ? vote : null} />
-      ))}
-
-      {solid.length ? (
-        <>
-          <h2 className='au-h2'>Already solid</h2>
-          <div className='au-solid'>
-            {solid.map((s) => (
-              <div key={s.id} className='au-solid-row'>
-                <span className='au-pos'>{s.position + 1}</span>
-                <b>{label(s.type)}</b>
-                <span className='au-muted'>{s.heading || (s.text_excerpt || '').slice(0, 80)}</span>
+                {site.judgement ? (
+                  <div className='pills'>
+                    <span className='zpill b'>{String(site.judgement.business_type || '').replace(/-/g, ' ')}</span>
+                    <span className='zpill'>Goal: {String(site.judgement.contact_goal || '').replace(/-/g, ' ')}</span>
+                    {site.judgement.offer_clarity != null ? <span className={'zpill ' + (site.judgement.offer_clarity >= 0.66 ? 'g' : site.judgement.offer_clarity < 0.34 ? 'r' : '')}>Offer clarity {Math.round(site.judgement.offer_clarity * 100)}%</span> : null}
+                    {site.judgement.proof_on_page != null ? <span className={'zpill ' + (site.judgement.proof_on_page >= 0.6 ? 'g' : 'r')}>{site.judgement.proof_on_page >= 0.6 ? 'Proof on page' : 'Little proof on page'}</span> : null}
+                  </div>
+                ) : null}
+                {site.visual && !site.visual.skipped ? (
+                  <div className='pills'>
+                    {site.visual.look ? <span className='sub'>Looks: {site.visual.look}</span> : null}
+                    <span className='zpill'>Imagery: {String(site.visual.imagery).replace(/-/g, ' ')}</span>
+                    <span className={'zpill ' + (site.visual.hierarchy === 'weak' ? 'r' : site.visual.hierarchy === 'strong' ? 'g' : '')}>Hierarchy {site.visual.hierarchy}</span>
+                    <span className={'zpill ' + (site.visual.density === 'crowded' ? 'r' : '')}>{site.visual.density}</span>
+                    {(site.visual.issues || []).map((k) => <span key={k} className='zpill r'>{k.replace(/-/g, ' ')}</span>)}
+                  </div>
+                ) : site.visual?.skipped ? <div className='sub' style={{ marginTop: 10 }}>Visual read skipped: {site.visual.skipped}</div> : null}
               </div>
+              {health != null ? (
+                <div className='ring'>
+                  <Ring v={health} />
+                  <b>{health}</b><span>design health</span>
+                </div>
+              ) : null}
+            </div>
+          </section>
+
+          {running ? (
+            <section className='zcard pad'>
+              <h2>Working on it</h2>
+              <div className='prog2'>
+                {STEPS.slice(0, 5).map((s, i) => <span key={s} className={i < stepIdx ? 'done' : i === stepIdx ? 'on' : ''}>{STEP_LABEL[s]}</span>)}
+              </div>
+              <div className='sub' style={{ marginTop: 10 }}>{audit.step_detail || STEP_LABEL[audit.status] || 'Working'}… this takes a minute or two.</div>
+            </section>
+          ) : null}
+          {audit.status === 'error' ? <div className='err'>The audit stopped: {audit.error}</div> : null}
+
+          {(scores.length || audit.psi?.scores) ? (
+            <div className='kpis'>
+              {scores.map((s) => (
+                <a key={s.name} className='kpi' href={'#checks-' + s.cat}>
+                  <small>{s.name}</small>
+                  <b style={{ color: col(s.v) }}>{s.v}</b>
+                  {s.v < 100 ? <span className='d'>+{100 - s.v} if fixed</span> : <span className='d n'>Nothing to fix</span>}
+                  <span className='go'>See checks →</span>
+                </a>
+              ))}
+              {Object.entries(audit.psi?.scores || {}).map(([k, v]) => (
+                <a key={k} className='kpi' href='#fix'>
+                  <small>{LH_LABEL[k] || k} (Lighthouse)</small>
+                  <b style={{ color: col(v) }}>{v}</b>
+                  <span className='d n'>Measured on mobile</span>
+                  <span className='go'>See fixes →</span>
+                </a>
+              ))}
+            </div>
+          ) : audit.psi?.skipped ? <div className='callout w'>Speed &amp; contrast not measured: {audit.psi.skipped}</div> : null}
+
+          {(site.network || audit.psi?.vitals) ? (
+            <section className='zcard pad'>
+              <h2>How the site is served</h2>
+              <div className='pills'>
+                {site.network?.tls?.days_left != null ? <span className='zpill'>Certificate {site.network.tls.days_left} days left</span> : null}
+                {site.network?.cdn ? <span className='zpill'>{site.network.cdn}</span> : null}
+                {site.network?.ttfb_ms ? <span className='zpill'>Server {Math.round(site.network.ttfb_ms)} ms</span> : null}
+                {(site.network?.trackers || []).length ? <span className='zpill'>{site.network.trackers.length} tracker{site.network.trackers.length > 1 ? 's' : ''}</span> : null}
+                {Object.entries(audit.psi?.vitals || {}).map(([k, v]) => v.value ? <span key={k} className={'zpill ' + (v.score >= 0.9 ? 'g' : v.score < 0.5 ? 'r' : '')}>{k} {v.value}</span> : null)}
+              </div>
+            </section>
+          ) : null}
+
+          {plan ? (
+            <section id='fix' className='zcard pad'>
+              <div className='sechead'>
+                <div>
+                  <h2>Fix first</h2>
+                  <div className='sub'>Ranked by impact on enquiries, then effort. {plan.counts.now} now · {plan.counts.next} next · {plan.counts.later} later. Open any row for the how-to.</div>
+                </div>
+                <div className='tools'>
+                  <input className='search' placeholder='Search fixes' value={query} onChange={(e) => setQuery(e.target.value)} />
+                  <span className='chips'>
+                    {['all', 'now', 'next', 'later'].map((c) => <button key={c} className={'zchip' + (filter === c ? ' on' : '')} onClick={() => setFilter(c)}>{c === 'all' ? 'All' : TIER[c]}</button>)}
+                  </span>
+                </div>
+              </div>
+              {plan.overview ? <p style={{ margin: '14px 0 0', maxWidth: '72ch', color: '#1e2b42' }}>{plan.overview}</p> : null}
+              {(plan.strengths || []).length ? <div className='pills'>{plan.strengths.map((s) => <span key={s} className='zpill g'>✓ {s}</span>)}</div> : null}
+              <div className='mini' style={{ marginTop: 16 }}>
+                {shown.map((it) => (
+                  <FixRow key={it.key} it={it} open={openFix === it.n} onToggle={() => { const next = openFix === it.n ? null : it.n; setOpenFix(next); if (next) history.replaceState(null, '', '#fix-' + it.n); }}
+                    fb={plan.feedback?.[it.key]?.verdict} dismissed={dismissed(it.key)} onVote={vote} onLink={() => anchorLink('fix-' + it.n)} onCopy={copyText}
+                    how={howtoFor(it.key, it.category, ctx)} section={it.section_id ? secById[it.section_id] : null} />
+                ))}
+                {!shown.length ? <div className='sub'>No fixes match.</div> : null}
+              </div>
+            </section>
+          ) : null}
+
+          {audit.summary ? (
+            <section className='zcard pad'>
+              <h2>Most common problems</h2>
+              <div className='pills'>
+                {(audit.summary.common_issues || []).length
+                  ? audit.summary.common_issues.map((c) => <span key={c.issue} className='zpill r'>{c.issue} · {c.sections}</span>)
+                  : <span className='sub'>Nothing recurring.</span>}
+                {(audit.summary.basics || []).map((b) => <span key={b} className='zpill'>{b}</span>)}
+              </div>
+            </section>
+          ) : null}
+
+          <section id='sections' className='zcard pad'>
+            <div className='sechead'>
+              <div>
+                <h2>Sections</h2>
+                <div className='sub'>The page top to bottom, with a picture from each section. Open one for its diagnosis and directions.</div>
+              </div>
+            </div>
+            <div className='heat' style={{ gridTemplateColumns: 'repeat(' + Math.min(Math.max(sections.length, 1), 18) + ',1fr)' }}>
+              {sections.map((s) => (
+                <a key={s.id} href={'#s' + s.id} className={['designed', 'classified', 'error'].includes(s.status) ? 'd' : ''} title={label(s.type)}>
+                  <span>{s.position + 1}</span><em>{label(s.type)}</em>
+                </a>
+              ))}
+            </div>
+          </section>
+
+          {toFix.map((s) => (
+            <SectionCard key={s.id} s={s} tools={audit.tools} onPick={pick} onCopy={copyText} onLink={() => anchorLink('s' + s.id)}
+              feedback={plan?.feedback || {}} onVote={plan ? vote : null}
+              fixes={items.map((it, i) => ({ ...it, n: i + 1 })).filter((it) => it.section_id === s.id)} />
+          ))}
+
+          {solid.length ? (
+            <section className='zcard pad'>
+              <h2>Already solid</h2>
+              <div className='srows' style={{ marginTop: 10 }}>
+                {solid.map((s) => (
+                  <div key={s.id} className='srow' id={'s' + s.id} style={{ gridTemplateColumns: '28px 86px 1fr' }}>
+                    <span className='n'>{s.position + 1}</span>
+                    {s.signals?.previews?.[0] ? <Snip src={s.signals.previews[0]} small /> : <span />}
+                    <span><b style={{ fontWeight: 600 }}>{label(s.type)}</b><br /><span className='sub' style={{ fontSize: 12.5 }}>{s.heading || (s.text_excerpt || '').slice(0, 90)}</span></span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {suggested.length ? (
+            <section id='tools' className='zcard pad'>
+              <h2>Suggested tools</h2>
+              <div className='sub'>Everything from your library the audit suggests for this site, strongest matches first. Each shows the sections it is meant for.</div>
+              <div className='tgrid'>
+                {suggested.map((e) => <ToolTile key={e.tool.id} e={e} />)}
+              </div>
+            </section>
+          ) : null}
+
+          {(audit.checks || []).length ? (
+            <section id='checks' className='zcard pad'>
+              <h2>Technical checks</h2>
+              <div className='sub'>What was found in the page, its headers, certificate and DNS. Open the fix for steps and code.</div>
+              <div className='tech'>
+                {cats.map((cat) => {
+                  const list = audit.checks.filter((c) => (c.category || 'Other') === cat);
+                  return (
+                    <div key={cat} id={'checks-' + cat} className='tg'>
+                      <h3>{cat}<span className='zpill r'>{list.length} to fix</span></h3>
+                      <ul>
+                        {list.map((c) => {
+                          const idx = items.findIndex((it) => it.key === 'check:' + c.id);
+                          return <li key={c.id} className='f'>{idx >= 0 ? <a href={'#fix-' + (idx + 1)}>{c.title} →</a> : c.title}</li>;
+                        })}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+
+          {audit.psi?.mobile_screenshot ? (
+            <details className='zcard pad'>
+              <summary style={{ cursor: 'pointer', fontWeight: 700 }}>On a phone (as Google sees it)</summary>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={audit.psi.mobile_screenshot} alt='Mobile screenshot' style={{ maxWidth: 360, marginTop: 12, borderRadius: 10 }} />
+            </details>
+          ) : null}
+
+          {shot ? (
+            <details className='zcard pad'>
+              <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Full-page screenshot</summary>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={shot} alt={'Screenshot of ' + hostOf(url)} loading='lazy' style={{ width: '100%', marginTop: 12, borderRadius: 10 }} onError={() => setShotFailed((n) => n + 1)} />
+            </details>
+          ) : null}
+
+          {audit.status === 'done' ? (
+            <section id='ask' className='zcard pad'>
+              <h2>Ask about this audit</h2>
+              <div className='ask'>
+                <input value={question} onChange={(e) => setQuestion(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') ask(); }} placeholder='e.g. What can I fix in one hour? Why is the FAQ flagged?' />
+                <button className='btn pri' onClick={() => ask()} disabled={asking || !question.trim()}>{asking ? 'Thinking…' : 'Ask'}</button>
+              </div>
+              <div className='pills'>
+                {['What should I fix in the first hour?', 'Explain the top 3 problems to my client in simple words', 'Which issues hurt enquiries the most?'].map((q) => <button key={q} className='zchip' onClick={() => ask(q)}>{q}</button>)}
+              </div>
+              {answer ? <div className='answer'>{answer}</div> : null}
+            </section>
+          ) : null}
+
+          {audit.engines?.decide || audit.engines?.design_used ? (
+            <div className='sub' style={{ textAlign: 'center' }}>
+              Scored by {audit.engines.decide || '—'} · Designed by {audit.engines.design_used || audit.engines.design || '—'}
+              {plan?.impact_engine ? ' · Prioritised by ' + plan.impact_engine : ''}
+            </div>
+          ) : null}
+        </main>
+      </div>
+      {toast ? <div className='ztoast'>{toast}</div> : null}
+    </Frame>
+  );
+}
+
+/* ------------------------------------------------------------- pieces */
+
+function Ring({ v }) {
+  const r = 52, c = 2 * Math.PI * r;
+  return (
+    <svg width='128' height='128'>
+      <circle cx='64' cy='64' r={r} fill='none' stroke='#e6eaf0' strokeWidth='10' />
+      <circle cx='64' cy='64' r={r} fill='none' stroke={col(v)} strokeWidth='10' strokeLinecap='round' strokeDasharray={(c * v / 100) + ' ' + c} />
+    </svg>
+  );
+}
+
+// A picture from the page. Hides itself if the image cannot be loaded.
+function Snip({ src, small }) {
+  const [bad, setBad] = useState(false);
+  if (bad) return small ? <span /> : <div className='snip ph'>Image unavailable</div>;
+  return (
+    <a className='snip' href={src} target='_blank' rel='noopener noreferrer' style={small ? { width: 86, height: 54, aspectRatio: 'auto' } : undefined}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt='' loading='lazy' referrerPolicy='no-referrer' onError={() => setBad(true)} />
+    </a>
+  );
+}
+
+// Tool picture with a lettered fallback when the library has no image or it fails.
+function ToolImg({ tool }) {
+  const [bad, setBad] = useState(false);
+  return (
+    <div className='img'>
+      {tool.image && !bad
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={tool.image} alt='' loading='lazy' referrerPolicy='no-referrer' onError={() => setBad(true)} />
+        : <b>{String(tool.title || '?').slice(0, 2)}</b>}
+    </div>
+  );
+}
+
+function ToolTile({ e }) {
+  const t = e.tool;
+  const secs = [...e.sections.values()];
+  return (
+    <div className={'tile' + (e.label === 'weak' ? ' weak' : '')}>
+      <ToolImg tool={t} />
+      <div className='body'>
+        <b className='t'>{t.title}</b>
+        <div className='pills' style={{ margin: 0 }}>
+          {e.label ? <span className={'zpill ' + pillCls(e.label)}>{e.label} match</span> : <span className='zpill'>used in {e.dirs} direction{e.dirs === 1 ? '' : 's'}</span>}
+          {t.usage_format ? <span className='zpill'>{t.usage_format.replace(/-/g, ' ')}</span> : t.type ? <span className='zpill'>{t.type}</span> : null}
+        </div>
+        {e.why ? <span className='sub' style={{ fontSize: 13 }}>{e.why}</span> : null}
+        {e.borrow ? <span style={{ fontSize: 13 }}><b>Borrow:</b> {e.borrow}</span> : null}
+        <span className='used'>For {secs.map((s, i) => <span key={s.id}>{i ? ', ' : ''}<a href={'#s' + s.id}>#{s.position + 1} {label(s.type)}</a></span>)}</span>
+      </div>
+      <div className='acts'>
+        <a className='btn sm pri' href={'/?open=' + t.id}>In Stash</a>
+        {t.url ? <a className='btn sm' href={t.url} target='_blank' rel='noopener noreferrer'>Open ↗</a> : null}
+      </div>
+    </div>
+  );
+}
+
+function CodeBox({ code, onCopy }) {
+  const keys = Object.keys(code);
+  const [k, setK] = useState(keys[0]);
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div className='tabs' style={{ marginTop: 0 }}>
+        {keys.map((x) => <button key={x} className={x === k ? 'on' : ''} onClick={() => setK(x)}>{x}</button>)}
+      </div>
+      <div className='codewrap'>
+        <pre className='zcode'>{code[k]}</pre>
+        <button className='cpb' onClick={() => onCopy(code[k], 'Code copied')}>Copy</button>
+      </div>
+    </div>
+  );
+}
+
+function FixRow({ it, open, onToggle, fb, dismissed, onVote, onLink, onCopy, how, section }) {
+  return (
+    <div id={'fix-' + it.n} className={'fixrow' + (open ? ' open' : '') + (dismissed ? ' dim' : '')} style={{ border: '1px solid var(--line)', borderRadius: 12, background: open ? '#fafbff' : '#fff' }}>
+      <button onClick={onToggle} style={{ all: 'unset', cursor: 'pointer', display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 12, alignItems: 'center', padding: '12px 14px', width: 'calc(100% - 28px)' }}>
+        <span className={'tier ' + it.tier}>{dismissed ? 'Not an issue' : TIER[it.tier]}</span>
+        <span>
+          <b style={{ fontWeight: 600, display: 'block' }}>{it.title}</b>
+          <span className='sub' style={{ fontSize: 13 }}>{it.category} · {it.effort} effort</span>
+        </span>
+        <span style={{ color: 'var(--soft)', fontSize: 18 }}>{open ? '⌃' : '⌄'}</span>
+      </button>
+      {open ? (
+        <div style={{ padding: '0 14px 16px' }}>
+          <p style={{ margin: '0 0 8px', color: '#1e2b42' }}>{it.why}</p>
+          <div className='callout b'><b>Fix:</b> {it.fix}{it.wcag ? ' · WCAG ' + it.wcag : ''}</div>
+          {how?.steps ? (
+            <ol className='steps'>{how.steps.map((x) => <li key={x[0]}><div><b>{x[0]}</b><span>{x[1]}</span></div></li>)}</ol>
+          ) : null}
+          {how?.code ? <CodeBox code={how.code} onCopy={onCopy} /> : null}
+          <div className='tools' style={{ marginTop: 14 }}>
+            {section ? <a className='btn sm pri' href={'#s' + section.id}>Go to section #{section.position + 1}</a> : null}
+            {(how?.verify || []).map((v) => <a key={v[1]} className='btn sm' href={v[1]} target='_blank' rel='noopener noreferrer' title={v[2]}>{v[0]} ↗</a>)}
+            {(how?.docs || []).map((v) => <a key={v[1]} className='btn sm' href={v[1]} target='_blank' rel='noopener noreferrer'>{v[0]} ↗</a>)}
+            <button className='btn sm' onClick={onLink}>Copy link</button>
+            <span className='vote'>
+              <button className={fb === 'up' ? 'on' : ''} onClick={() => onVote(it.key, 'up')} title='Right call'>👍</button>
+              <button className={fb === 'down' ? 'on' : ''} onClick={() => onVote(it.key, 'down')} title='Not an issue'>👎</button>
+            </span>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SectionCard({ s, tools, onPick, onCopy, onLink, feedback, onVote, fixes }) {
+  const sug = s.suggestion || {};
+  const pct = Math.round((Number(s.needs_work) || 0) * 100);
+  const issueKey = (l) => 'issue:' + s.id + ':' + l;
+  const previews = s.signals?.previews || [];
+  const visuals = (sug.visuals || []).filter((v) => tools?.[v.tool_id]);
+  return (
+    <article className='zcard pad' id={'s' + s.id}>
+      <div className='dh'>
+        <div>
+          <div className='eyebrow'>Section {s.position + 1}</div>
+          <h2 style={{ fontSize: 20, marginTop: 2 }}>{label(s.type)}</h2>
+          <div className='sub'>{s.heading || (s.text_excerpt || '').slice(0, 110)}</div>
+        </div>
+        <div className='tools'>
+          <div style={{ width: 150 }} title={'Needs work: ' + pct + '%'}>
+            <div className='bar'><div className='l'><span style={{ fontSize: 12 }}>Needs work</span><span style={{ color: col(100 - pct) }}>{pct}%</span></div><div className='t'><i style={{ width: pct + '%', background: col(100 - pct) }} /></div></div>
+          </div>
+          <button className='btn sm' onClick={onLink}>Copy link</button>
+        </div>
+      </div>
+
+      {previews.length ? (
+        <>
+          <div className='snips'>{previews.map((p) => <Snip key={p} src={p} />)}</div>
+          <div className='snips-cap'>From this section of the page</div>
+        </>
+      ) : null}
+
+      {(s.issues || []).length ? (
+        <div className='pills'>
+          {s.issues.map((i) => {
+            const off = feedback?.[issueKey(i)]?.verdict === 'down';
+            return onVote ? (
+              <button key={i} className={'zpill r' + (off ? ' dim' : '')} style={{ border: 0, cursor: 'pointer' }} onClick={() => onVote(issueKey(i), 'down', i)}
+                title={off ? 'Restore this problem' : 'Not an issue here. Click to dismiss'}>{i} {off ? '↺' : '×'}</button>
+            ) : <span key={i} className='zpill r'>{i}</span>;
+          })}
+        </div>
+      ) : null}
+      {s.scores?.uncertain ? <div className='callout w' style={{ marginTop: 12 }}>Jev was split on this one. Worth a look yourself before acting.</div> : null}
+      {s.status === 'classified' ? <div className='sub' style={{ marginTop: 12 }}>Designing directions for this section…</div> : null}
+      {s.status === 'error' ? <div className='err' style={{ marginTop: 12 }}>Could not design this one: {sug.error}</div> : null}
+
+      {sug.diagnosis ? <p className='q' style={{ margin: '16px 0 0' }}>{sug.diagnosis}</p> : null}
+      {sug.keep ? <div className='sub' style={{ marginTop: 10 }}><b style={{ color: 'var(--ink)' }}>Keep:</b> {sug.keep}</div> : null}
+      {sug.copy?.headline || sug.copy?.cta ? (
+        <div className='sub' style={{ marginTop: 6 }}>
+          {sug.copy.headline ? <span><b style={{ color: 'var(--ink)' }}>Suggested headline:</b> {sug.copy.headline} <button className='stat' onClick={() => onCopy(sug.copy.headline, 'Headline copied')}>Copy</button> </span> : null}
+          {sug.copy.cta ? <span style={{ marginLeft: 10 }}><b style={{ color: 'var(--ink)' }}>Button:</b> {sug.copy.cta}</span> : null}
+        </div>
+      ) : null}
+
+      {fixes?.length ? (
+        <div className='rel' style={{ marginTop: 12 }}>
+          {fixes.map((f) => <a key={f.key} href={'#fix-' + f.n}>→ Fix #{f.n}: {f.title}</a>)}
+        </div>
+      ) : null}
+
+      {visuals.length ? (
+        <>
+          <h3 style={{ margin: '22px 0 0', fontSize: 14 }}>Best visual references <span className='sub' style={{ fontWeight: 500 }}>(a vision model compared their screenshots with this site)</span></h3>
+          <div className='tgrid'>
+            {visuals.map((v) => (
+              <ToolTile key={v.tool_id} e={{ tool: tools[v.tool_id], sections: new Map([[s.id, s]]), label: v.label, why: v.why, borrow: v.borrow, dirs: 0 }} />
             ))}
           </div>
         </>
       ) : null}
 
-      {(audit.checks || []).length ? (
-        <details className='au-checks'>
-          <summary>All technical checks ({audit.checks.length})</summary>
-          {audit.checks.map((c) => (
-            <div key={c.id} className='au-check'>
-              <span className={'au-sev sev-' + c.severity}>{c.severity}</span>
-              <div>
-                <b>{c.title}</b>
-                <p>{c.why}</p>
-                <p className='au-fix-how'><span>Fix:</span> {c.fix}{c.wcag ? ' · WCAG ' + c.wcag : ''}</p>
-              </div>
-            </div>
-          ))}
-        </details>
-      ) : null}
-
-      {audit.status === 'done' ? (
-        <section className='au-ask'>
-          <div className='d-label'>Ask about this audit</div>
-          <div className='au-ask-row'>
-            <input
-              className='au-input'
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') ask(); }}
-              placeholder='e.g. What can I fix in one hour? Why is the FAQ flagged?'
-            />
-            <button className='au-go' onClick={() => ask()} disabled={asking || !question.trim()}>{asking ? 'Thinking…' : 'Ask'}</button>
-          </div>
-          <div className='tag-cloud'>
-            {['What should I fix in the first hour?', 'Explain the top 3 problems to my client in simple words', 'Which issues hurt enquiries the most?'].map((q) => (
-              <button key={q} className='tag-chip' onClick={() => ask(q)}>{q}</button>
-            ))}
-          </div>
-          {answer ? <div className='au-answer'>{answer}</div> : null}
-        </section>
-      ) : null}
-
-      {audit.engines?.decide || audit.engines?.design_used ? (
-        <div className='au-engines'>
-          Scored by {audit.engines.decide || '—'} · Designed by {audit.engines.design_used || audit.engines.design || '—'}
-          {audit.plan?.impact_engine ? ' · Prioritised by ' + audit.plan.impact_engine : ''}
-        </div>
-      ) : null}
-
-      {toast ? <div className='toast-stack'><div className='toast ok'>{toast}</div></div> : null}
-    </Shell>
-  );
-}
-
-function SectionCard({ s, tools, onPick, onCopy, feedback, onVote }) {
-  const sug = s.suggestion || {};
-  const pct = Math.round((Number(s.needs_work) || 0) * 100);
-  const issueKey = (label) => 'issue:' + s.id + ':' + label;
-  return (
-    <article className='au-card' id={'s' + s.id}>
-      <div className='au-card-head'>
-        <span className='au-pos'>{s.position + 1}</span>
-        <div className='au-card-title'>
-          <b>{label(s.type)}</b>
-          <span>{s.heading || (s.text_excerpt || '').slice(0, 90)}</span>
-        </div>
-        <div className='au-need' title={'Needs work: ' + pct + '%'}>
-          <div className='au-need-bar'><i style={{ width: pct + '%' }} /></div>
-          <small>{pct}%</small>
-        </div>
-      </div>
-
-      {(s.issues || []).length ? (
-        <div className='tag-cloud'>
-          {s.issues.map((i) => {
-            const off = feedback?.[issueKey(i)]?.verdict === 'down';
-            return onVote ? (
-              <button key={i} className={'pill err au-issue' + (off ? ' off' : '')} onClick={() => onVote(issueKey(i), 'down', i)}
-                title={off ? 'Restore this problem' : 'Not an issue here — click to dismiss'}>
-                {i} <span aria-hidden>{off ? '↺' : '×'}</span>
-              </button>
-            ) : <span key={i} className='pill err'>{i}</span>;
-          })}
-        </div>
-      ) : null}
-      {s.scores?.uncertain ? <div className='au-note' style={{ margin: 0 }}>Jev was split on this one — worth a look yourself before acting.</div> : null}
-
-      {s.status === 'classified' ? <div className='au-muted'>Designing directions for this section…</div> : null}
-      {s.status === 'error' ? <div className='au-err'>Could not design this one: {sug.error}</div> : null}
-
-      {sug.diagnosis ? <p className='au-diag'>{sug.diagnosis}</p> : null}
-      {sug.keep ? <p className='au-keep'><b>Keep:</b> {sug.keep}</p> : null}
-      {sug.copy?.headline || sug.copy?.cta ? (
-        <div className='au-copy'>
-          {sug.copy.headline ? <div><small>Headline</small><b>{sug.copy.headline}</b></div> : null}
-          {sug.copy.cta ? <div><small>Button</small><b>{sug.copy.cta}</b></div> : null}
-        </div>
-      ) : null}
-
-      {(sug.visuals || []).length ? (
-        <div className='au-visuals'>
-          <div className='au-vis-title'>Best visual references <small>(a vision model compared their screenshots with this site)</small></div>
-          <div className='au-vis-row'>
-            {sug.visuals.map((v) => tools?.[v.tool_id] ? (
-              <a key={v.tool_id} className={'au-vis ' + v.label} href={'/?open=' + v.tool_id}>
-                {tools[v.tool_id].image ? <img src={tools[v.tool_id].image} alt='' loading='lazy' /> : <div className='au-tool-ph' />}
-                <b>{tools[v.tool_id].title}</b>
-                <span className={'pill ' + (v.label === 'strong' ? 'oss' : v.label === 'weak' ? 'err' : '')}>{v.label} match</span>
-                <small>{v.why}</small>
-                {v.borrow ? <small><b>Borrow:</b> {v.borrow}</small> : null}
-              </a>
-            ) : null)}
-          </div>
-        </div>
-      ) : null}
-
-      <div className='au-dirs'>
+      {(sug.directions || []).length ? <h3 style={{ margin: '22px 0 0', fontSize: 14 }}>Directions</h3> : null}
+      <div className='dirs' style={{ marginTop: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))' }}>
         {(sug.directions || []).map((d, i) => (
-          <div key={i} className={s.picked === i ? 'au-dir picked' : 'au-dir'}>
-            <div className='au-dir-head'>
-              <b>{d.title}</b>
-              <span className={'pill ' + (d.effort === 'quick' ? 'oss' : d.effort === 'bigger' ? 'err' : '')}>{d.effort}</span>
+          <div key={i} className='dir' style={s.picked === i ? { borderColor: 'var(--brand)', background: '#f5f8ff' } : undefined}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <b>{'ABCDE'[i]}. {d.title}</b>
+              <span className={'zpill ' + (d.effort === 'quick' ? 'g' : d.effort === 'bigger' ? 'r' : 'a')}>{d.effort}</span>
             </div>
             <p>{d.idea}</p>
             {d.checks ? (
-              <div className='au-checked'>
-                <span className={d.checks.fixes_problems >= 0.6 ? 'ok' : d.checks.fixes_problems < 0.35 ? 'bad' : ''}>
-                  Fixes the problems: {Math.round(d.checks.fixes_problems * 100)}%
-                </span>
-                <span className={d.checks.invents_facts < 0.3 ? 'ok' : 'bad'}>
-                  {d.checks.invents_facts < 0.3 ? 'No made-up facts' : 'Check the facts'}
-                </span>
+              <div className='fx'>
+                <span>Fixes the problems</span>
+                <span className='t'><i style={{ width: Math.round(d.checks.fixes_problems * 100) + '%' }} /></span>
+                {Math.round(d.checks.fixes_problems * 100)}%
+                <span style={{ marginLeft: 8, color: d.checks.invents_facts < 0.3 ? 'var(--ok)' : 'var(--now)' }}>{d.checks.invents_facts < 0.3 ? 'No made-up facts' : 'Check the facts'}</span>
               </div>
             ) : null}
-            {d.flag ? <div className='au-flag'>{d.flag}</div> : null}
-            {(d.tool_ids || []).length ? (
-              <div className='au-tools'>
+            {d.flag ? <div className='callout w' style={{ marginTop: 10 }}>{d.flag}</div> : null}
+            {(d.tool_ids || []).map((tid) => tools?.[tid]).filter(Boolean).length ? (
+              <div className='tgrid' style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(150px,1fr))', marginTop: 12 }}>
                 {d.tool_ids.map((tid) => tools?.[tid]).filter(Boolean).map((t) => (
-                  <div key={t.id} className='au-tool'>
-                    {t.image ? <img src={t.image} alt='' loading='lazy' /> : <div className='au-tool-ph' />}
-                    <div className='au-tool-body'>
-                      <b>{t.title}</b>
-                      <small>{t.usage_format ? t.usage_format.replace(/-/g, ' ') : t.type}</small>
-                      <div className='au-tool-links'>
-                        <a href={'/?open=' + t.id}>In Stash</a>
-                        <a href={t.url} target='_blank' rel='noopener noreferrer'>Open ↗</a>
-                      </div>
+                  <div key={t.id} className='tile'>
+                    <ToolImg tool={t} />
+                    <div className='body'><b className='t' style={{ fontSize: 13 }}>{t.title}</b><span className='sub' style={{ fontSize: 12 }}>{t.usage_format ? t.usage_format.replace(/-/g, ' ') : t.type}</span></div>
+                    <div className='acts'>
+                      <a className='btn sm' href={'/?open=' + t.id}>In Stash</a>
+                      {t.url ? <a className='btn sm' href={t.url} target='_blank' rel='noopener noreferrer'>Open ↗</a> : null}
                     </div>
                   </div>
                 ))}
               </div>
             ) : null}
-            <div className='au-dir-actions'>
-              {d.prompt ? <button className='ghost-btn' onClick={() => onCopy(d.prompt)}>Copy build prompt</button> : null}
-              <button className={s.picked === i ? 'au-pick on' : 'au-pick'} onClick={() => onPick(s, i)}>
-                {s.picked === i ? 'Picked ✓' : 'Use this'}
-              </button>
+            <div className='tools' style={{ marginTop: 12 }}>
+              {d.prompt ? <button className='btn sm' onClick={() => onCopy(d.prompt, 'Prompt copied')}>Copy build prompt</button> : null}
+              <button className={'btn sm' + (s.picked === i ? ' pri' : '')} onClick={() => onPick(s, i)}>{s.picked === i ? 'Picked ✓' : 'Use this'}</button>
             </div>
           </div>
         ))}
@@ -492,19 +661,17 @@ function SectionCard({ s, tools, onPick, onCopy, feedback, onVote }) {
   );
 }
 
-function Shell({ children }) {
+function Frame({ children, client, host, extra }) {
   return (
-    <div className='app au'>
-      <header className='topbar'>
-        <a className='brand' href='/'>
-          <span className='brand-mark' />
-          <span className='brand-name'>stash</span>
-        </a>
-        <div className='topbar-right'>
-          <a className='ghost-btn' href='/audit'>All audits</a>
+    <div className='dz'>
+      <div className='top'>
+        <a className='logo' href='/'><i />stash</a>
+        <div className='crumb'>
+          <a href='/audit'>Audits</a>{host ? <> / <b>{client || host}</b></> : null}
         </div>
-      </header>
-      <main className='au-main'>{children}</main>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>{extra}</div>
+      </div>
+      {host ? children : <div style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>{children}</div>}
     </div>
   );
 }
