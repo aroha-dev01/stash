@@ -1330,6 +1330,7 @@ function renderAudit(a) {
     site: a.site ? { framework: a.site.framework, fonts: a.site.fonts, colours: a.site.colours } : undefined,
     health: a.summary?.health,
     page_judgement: a.site?.judgement || undefined,
+    visual_read: a.site?.visual && !a.site.visual.skipped ? a.site.visual : undefined,
     needs_human_check: a.summary?.uncertain_sections?.length ? a.summary.uncertain_sections : undefined,
     lighthouse_mobile: a.psi?.scores || (a.psi?.skipped ? 'not measured: ' + a.psi.skipped : undefined),
     core_web_vitals: a.psi?.vitals ? Object.fromEntries(Object.entries(a.psi.vitals).map(([k, v]) => [k, v.value])) : undefined,
@@ -1349,11 +1350,15 @@ function renderAudit(a) {
       verdict: s.status === 'skipped' ? 'solid' : s.status === 'designed' ? 'redesign' : s.status,
       diagnosis: s.suggestion?.diagnosis || undefined,
       better_headline: s.suggestion?.copy?.headline || undefined,
+      best_visual_references: (s.suggestion?.visuals || []).length
+        ? s.suggestion.visuals.filter((v) => tools[v.tool_id]).map((v) => ({ name: tools[v.tool_id].title, url: tools[v.tool_id].url, match: v.label, why: v.why, borrow: v.borrow || undefined }))
+        : undefined,
       directions: (s.suggestion?.directions || []).map((d) => ({
         title: d.title,
         idea: d.idea,
         effort: d.effort,
         jev_check: d.checks || undefined,
+        visual_match: (s.suggestion?.visuals || []).find((v) => (d.tool_ids || []).includes(v.tool_id)) || undefined,
         warning: d.flag || undefined,
         tools: (d.tool_ids || []).map((id) => tools[id]).filter(Boolean)
           .map((t) => ({ id: t.id, name: t.title, url: t.url, preview_image: t.image || undefined, format: t.usage_format })),

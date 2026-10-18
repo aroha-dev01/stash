@@ -163,6 +163,15 @@ export default function AuditPage() {
               ) : null}
             </div>
           ) : null}
+          {site.visual && !site.visual.skipped ? (
+            <div className='au-facts'>
+              {site.visual.look ? <span className='au-muted'>Looks: {site.visual.look}</span> : null}
+              <span className='pill'>imagery: {String(site.visual.imagery).replace(/-/g, ' ')}</span>
+              <span className={'pill ' + (site.visual.hierarchy === 'weak' ? 'err' : site.visual.hierarchy === 'strong' ? 'oss' : '')}>hierarchy {site.visual.hierarchy}</span>
+              <span className={'pill ' + (site.visual.density === 'crowded' ? 'err' : '')}>{site.visual.density}</span>
+              {(site.visual.issues || []).map((k) => <span key={k} className='pill err'>{k.replace(/-/g, ' ')}</span>)}
+            </div>
+          ) : site.visual?.skipped ? <div className='au-muted'>Visual read skipped: {site.visual.skipped}</div> : null}
           {!running ? (
             <div className='au-head-actions'>
               <button className='ghost-btn' onClick={rerun}>Re-run audit</button>
@@ -400,6 +409,23 @@ function SectionCard({ s, tools, onPick, onCopy, feedback, onVote }) {
         <div className='au-copy'>
           {sug.copy.headline ? <div><small>Headline</small><b>{sug.copy.headline}</b></div> : null}
           {sug.copy.cta ? <div><small>Button</small><b>{sug.copy.cta}</b></div> : null}
+        </div>
+      ) : null}
+
+      {(sug.visuals || []).length ? (
+        <div className='au-visuals'>
+          <div className='au-vis-title'>Best visual references <small>(a vision model compared their screenshots with this site)</small></div>
+          <div className='au-vis-row'>
+            {sug.visuals.map((v) => tools?.[v.tool_id] ? (
+              <a key={v.tool_id} className={'au-vis ' + v.label} href={'/?open=' + v.tool_id}>
+                {tools[v.tool_id].image ? <img src={tools[v.tool_id].image} alt='' loading='lazy' /> : <div className='au-tool-ph' />}
+                <b>{tools[v.tool_id].title}</b>
+                <span className={'pill ' + (v.label === 'strong' ? 'oss' : v.label === 'weak' ? 'err' : '')}>{v.label} match</span>
+                <small>{v.why}</small>
+                {v.borrow ? <small><b>Borrow:</b> {v.borrow}</small> : null}
+              </a>
+            ) : null)}
+          </div>
         </div>
       ) : null}
 
