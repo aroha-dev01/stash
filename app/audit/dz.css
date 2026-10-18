@@ -276,3 +276,5 @@ body:has(.dz){background:#edf0f4}
 .dz .err{background:var(--now-t);color:var(--now);border-radius:12px;padding:14px 16px;font-weight:600}
 .dz .toastd{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:9px 16px;border-radius:99px;font-size:13px;font-weight:600;z-index:60}
 @media(max-width:900px){.dz .snips{grid-template-columns:repeat(3,1fr)}.dz .sect-grid{grid-template-columns:1fr}}
+.dz .a-ok{color:var(--ok);font-weight:700}
+.dz .fixrow .stat{white-space:nowrap}

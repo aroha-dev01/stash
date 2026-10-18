@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { howtoFor } from '@/lib/audit/howto';
+import { fixPrompt, briefMarkdown } from '@/lib/audit/brief';
 import '../dz.css';
 
 // One audit, laid out as a structured report: scores that link to their
@@ -37,6 +38,9 @@ export default function AuditPage() {
   const [answer, setAnswer] = useState(null);
   const [asking, setAsking] = useState(false);
   const [active, setActive] = useState('overview');
+  const [rivalText, setRivalText] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [brandForm, setBrandForm] = useState(null);
   const alive = useRef(true);
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 2200); };
@@ -83,7 +87,7 @@ export default function AuditPage() {
   // Which block the sticky rail highlights.
   useEffect(() => {
     if (!audit) return;
-    const ids = ['overview', 'fix', 'sections', 'tools', 'checks', 'ask'];
+    const ids = ['overview', 'fix', 'sections', 'tools', 'compete', 'checks', 'ask'];
     const onScroll = () => {
       let cur = ids[0];
       for (const i of ids) { const e = document.getElementById(i); if (e && e.getBoundingClientRect().top < 160) cur = i; }
@@ -134,6 +138,40 @@ export default function AuditPage() {
     else flash(j.error || 'Could not start');
   }
 
+  const patchPlan = (patch) => setAudit((a) => ({ ...a, plan: { ...a.plan, ...patch } }));
+
+  // Your own progress on a fix: open, doing or done. Saved with the audit.
+  async function setStatus(itemKey, status) {
+    const map = { ...(audit.plan?.status || {}) };
+    if (status === 'open') delete map[itemKey]; else map[itemKey] = { status, at: new Date().toISOString() };
+    patchPlan({ status: map });
+    await fetch('/api/audit/' + id + '/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ op: 'status', item_key: itemKey, status }) }).catch(() => {});
+  }
+
+  async function saveBrand() {
+    const b = brandForm || {};
+    const res = await fetch('/api/audit/' + id + '/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ op: 'brand', logo_url: b.logo_url, color: b.color, agency: b.agency }) });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok) { patchPlan({ brand: j.brand }); flash('Report branding saved'); } else flash(j.error || 'Could not save');
+  }
+
+  async function scanRivals() {
+    const urls = rivalText.split(/[\s,]+/).filter(Boolean);
+    if (!urls.length || scanning) return;
+    setScanning(true);
+    flash('Scanning ' + Math.min(urls.length, 3) + ' site' + (urls.length > 1 ? 's' : '') + '… about 30 seconds');
+    try {
+      const res = await fetch('/api/audit/' + id + '/compete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ urls }) });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) { patchPlan({ competitors: j.competitors }); setRivalText(''); } else flash(j.error || 'Scan failed');
+    } catch (e) { flash('Scan failed: ' + e.message); } finally { setScanning(false); }
+  }
+
+  async function removeRival(host) {
+    patchPlan({ competitors: (audit.plan?.competitors || []).filter((c) => c.host !== host) });
+    await fetch('/api/audit/' + id + '/compete', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ host }) }).catch(() => {});
+  }
+
   const copyText = (text, msg) => navigator.clipboard.writeText(text).then(() => flash(msg || 'Copied'), () => flash('Could not copy'));
   const anchorLink = (hash) => copyText(window.location.origin + window.location.pathname + '#' + hash, 'Link copied');
 
@@ -176,9 +214,25 @@ export default function AuditPage() {
   const health = audit.summary?.health;
   const items = (plan?.items || []);
   const dismissed = (k) => plan?.feedback?.[k]?.verdict === 'down';
-  const shown = items.map((it, i) => ({ ...it, n: i + 1 })).filter((it) => (filter === 'all' || it.tier === filter) && (!query || (it.title + it.why + it.category).toLowerCase().includes(query.toLowerCase())));
+  const statusOf = (k) => plan?.status?.[k]?.status || 'open';
+  const approved = new Set(plan?.approvals?.keys || []);
+  const howOf = (it) => howtoFor(it.key, it.category, ctx);
+  const sectionOfItem = (it) => (it.section_id ? secById[it.section_id] : null);
+  const liveItems = items.filter((it) => !dismissed(it.key));
+  const doneCount = liveItems.filter((it) => statusOf(it.key) === 'done').length;
+  const rivals = plan?.competitors || [];
+  const brief = (list) => briefMarkdown(audit, list, howOf, sectionOfItem, (it) => statusOf(it.key));
+  const downloadBrief = (list, name) => {
+    const blob = new Blob([brief(list)], { type: 'text/markdown' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (name || 'fixes') + '-' + hostOf(url) + '.md';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+  const shown = items.map((it, i) => ({ ...it, n: i + 1 })).filter((it) => (filter === 'all' || (filter === 'approved' ? approved.has(it.key) : it.tier === filter)) && (!query || (it.title + it.why + it.category).toLowerCase().includes(query.toLowerCase())));
   const cats = [...new Set((audit.checks || []).map((c) => c.category || 'Other'))];
-  const rail = [['overview', 'Overview', ''], ['fix', 'Fix first', items.length || ''], ['sections', 'Sections', sections.length || ''], ['tools', 'Suggested tools', suggested.length || ''], ['checks', 'Technical checks', (audit.checks || []).length || ''], ['ask', 'Ask', '']];
+  const rail = [['overview', 'Overview', ''], ['fix', 'Fix first', items.length || ''], ['sections', 'Sections', sections.length || ''], ['tools', 'Suggested tools', suggested.length || ''], ...(plan ? [['compete', 'Competitors', rivals.length || '']] : []), ['checks', 'Technical checks', (audit.checks || []).length || ''], ['ask', 'Ask', '']];
   const scores = SITE_SCORES.filter(([k]) => audit.summary?.site_scores?.[k] != null).map(([k, name, cat]) => ({ name, cat, v: audit.summary.site_scores[k] }));
 
   return (
@@ -271,6 +325,53 @@ export default function AuditPage() {
             </div>
           ) : audit.psi?.skipped ? <div className='callout w'>Speed &amp; contrast not measured: {audit.psi.skipped}</div> : null}
 
+          {audit.compare ? (
+            <section id='since' className='zcard pad'>
+              <div className='sechead'>
+                <div>
+                  <h2>Since the last audit</h2>
+                  <div className='sub'>Compared with the audit from {new Date(audit.compare.prev_date).toLocaleDateString()}.</div>
+                </div>
+                <a className='btn sm' href={'/audit/' + audit.compare.prev_id}>Open previous ↗</a>
+              </div>
+              <div className='kpis' style={{ marginTop: 14 }}>
+                {[['Design health', audit.compare.health], ...SITE_SCORES.filter(([k]) => audit.compare.scores[k]).map(([k, n]) => [n, audit.compare.scores[k]])].filter(([, d]) => d).map(([n, d]) => (
+                  <div key={n} className='kpi' style={{ cursor: 'default' }}>
+                    <small>{n}</small>
+                    <b style={{ color: col(d.to) }}>{d.to}</b>
+                    <span className={'d' + (d.change === 0 ? ' n' : '')} style={d.change < 0 ? { color: 'var(--now)' } : undefined}>
+                      {d.change > 0 ? '▲ +' + d.change : d.change < 0 ? '▼ ' + d.change : 'No change'} from {d.from}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className='two' style={{ marginTop: 16 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 14, color: 'var(--ok)' }}>Resolved ({audit.compare.resolved.length})</h3>
+                  <div className='rel'>{audit.compare.resolved.length ? audit.compare.resolved.map((r) => <span key={r.key + r.title} style={{ fontSize: 13.5, fontWeight: 600 }}>✓ {r.title}</span>) : <span className='sub'>Nothing resolved yet.</span>}</div>
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 14, color: 'var(--now)' }}>New since then ({audit.compare.added.length})</h3>
+                  <div className='rel'>{audit.compare.added.length ? audit.compare.added.map((r) => <span key={r.key + r.title} style={{ fontSize: 13.5, fontWeight: 600 }}>＋ {r.title}</span>) : <span className='sub'>No new problems.</span>}</div>
+                </div>
+              </div>
+              <div className='sub' style={{ marginTop: 12 }}>{audit.compare.still} finding{audit.compare.still === 1 ? '' : 's'} carried over unchanged.</div>
+            </section>
+          ) : null}
+
+          {plan && !running ? (
+            <details className='zcard pad'>
+              <summary style={{ cursor: 'pointer', fontWeight: 700 }}>White-label the client report{plan.brand?.agency || plan.brand?.logo_url ? ' · set' : ''}</summary>
+              <div className='sub' style={{ marginTop: 6 }}>Your name, logo and colour on the report you share. Saved with this audit.</div>
+              <div className='ask' style={{ flexWrap: 'wrap' }}>
+                <input placeholder='Your agency name' defaultValue={plan.brand?.agency || ''} onChange={(e) => setBrandForm((b) => ({ ...(b || plan.brand || {}), agency: e.target.value }))} />
+                <input placeholder='Logo address (https://…)' defaultValue={plan.brand?.logo_url || ''} onChange={(e) => setBrandForm((b) => ({ ...(b || plan.brand || {}), logo_url: e.target.value }))} />
+                <input placeholder='Accent colour, e.g. #2447d6' defaultValue={plan.brand?.color || ''} style={{ maxWidth: 200 }} onChange={(e) => setBrandForm((b) => ({ ...(b || plan.brand || {}), color: e.target.value }))} />
+                <button className='btn pri' onClick={saveBrand}>Save</button>
+              </div>
+            </details>
+          ) : null}
+
           {(site.network || audit.psi?.vitals) ? (
             <section className='zcard pad'>
               <h2>How the site is served</h2>
@@ -294,17 +395,30 @@ export default function AuditPage() {
                 <div className='tools'>
                   <input className='search' placeholder='Search fixes' value={query} onChange={(e) => setQuery(e.target.value)} />
                   <span className='chips'>
-                    {['all', 'now', 'next', 'later'].map((c) => <button key={c} className={'zchip' + (filter === c ? ' on' : '')} onClick={() => setFilter(c)}>{c === 'all' ? 'All' : TIER[c]}</button>)}
+                    {['all', 'now', 'next', 'later', ...(approved.size ? ['approved'] : [])].map((c) => <button key={c} className={'zchip' + (filter === c ? ' on' : '')} onClick={() => setFilter(c)}>{c === 'all' ? 'All' : c === 'approved' ? 'Client approved' : TIER[c]}</button>)}
                   </span>
                 </div>
               </div>
               {plan.overview ? <p style={{ margin: '14px 0 0', maxWidth: '72ch', color: '#1e2b42' }}>{plan.overview}</p> : null}
+              <div className='tools' style={{ marginTop: 14 }}>
+                <span className='zpill g'>{doneCount} of {liveItems.length} done</span>
+                <button className='btn sm' onClick={() => copyText(brief(liveItems.filter((i) => i.tier === 'now')), 'Brief copied')}>Copy brief: fix now</button>
+                <button className='btn sm' onClick={() => downloadBrief(liveItems, 'all-fixes')}>Download all (.md)</button>
+                {approved.size ? <button className='btn sm pri' onClick={() => downloadBrief(liveItems.filter((i) => approved.has(i.key)), 'approved-fixes')}>Download approved (.md)</button> : null}
+              </div>
+              {plan.approvals?.at ? (
+                <div className='callout g' style={{ marginTop: 14 }}>
+                  <b>Client approved {approved.size} item{approved.size === 1 ? '' : 's'}</b> on {new Date(plan.approvals.at).toLocaleDateString()}{plan.approvals.name ? ' (' + plan.approvals.name + ')' : ''}.
+                  {plan.approvals.note ? <div style={{ marginTop: 4 }}>“{plan.approvals.note}”</div> : null}
+                </div>
+              ) : null}
               {(plan.strengths || []).length ? <div className='pills'>{plan.strengths.map((s) => <span key={s} className='zpill g'>✓ {s}</span>)}</div> : null}
               <div className='mini' style={{ marginTop: 16 }}>
                 {shown.map((it) => (
                   <FixRow key={it.key} it={it} open={openFix === it.n} onToggle={() => { const next = openFix === it.n ? null : it.n; setOpenFix(next); if (next) history.replaceState(null, '', '#fix-' + it.n); }}
                     fb={plan.feedback?.[it.key]?.verdict} dismissed={dismissed(it.key)} onVote={vote} onLink={() => anchorLink('fix-' + it.n)} onCopy={copyText}
-                    how={howtoFor(it.key, it.category, ctx)} section={it.section_id ? secById[it.section_id] : null} />
+                    how={howOf(it)} section={sectionOfItem(it)} status={statusOf(it.key)} onStatus={setStatus} approved={approved.has(it.key)}
+                    prompt={fixPrompt(audit, it, howOf(it), sectionOfItem(it))} />
                 ))}
                 {!shown.length ? <div className='sub'>No fixes match.</div> : null}
               </div>
@@ -370,6 +484,18 @@ export default function AuditPage() {
             </section>
           ) : null}
 
+          {plan ? (
+            <section id='compete' className='zcard pad'>
+              <h2>Competitors</h2>
+              <div className='sub'>Scan up to three rival sites with the same security, privacy, SEO and speed checks, then see where this site leads and trails.</div>
+              <div className='ask'>
+                <input value={rivalText} onChange={(e) => setRivalText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') scanRivals(); }} placeholder='rival1.com, rival2.com, rival3.com' />
+                <button className='btn pri' onClick={scanRivals} disabled={scanning || !rivalText.trim()}>{scanning ? 'Scanning…' : 'Scan'}</button>
+              </div>
+              {rivals.length ? <Rivals own={{ host: hostOf(url), scores: audit.summary?.site_scores || {}, ttfb: site.network?.ttfb_ms, findings: (audit.checks || []).length, trackers: (site.network?.trackers || []).length, sections: sections.length }} rivals={rivals} onRemove={removeRival} /> : null}
+            </section>
+          ) : null}
+
           {(audit.checks || []).length ? (
             <section id='checks' className='zcard pad'>
               <h2>Technical checks</h2>
@@ -393,12 +519,27 @@ export default function AuditPage() {
             </section>
           ) : null}
 
-          {audit.psi?.mobile_screenshot ? (
-            <details className='zcard pad'>
-              <summary style={{ cursor: 'pointer', fontWeight: 700 }}>On a phone (as Google sees it)</summary>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={audit.psi.mobile_screenshot} alt='Mobile screenshot' style={{ maxWidth: 360, marginTop: 12, borderRadius: 10 }} />
-            </details>
+          {(audit.psi?.mobile_screenshot || shot) ? (
+            <section className='zcard pad'>
+              <h2>Phone and desktop</h2>
+              <div className='sub'>The same page as a phone sees it (Google's view) and as a wide screen sees it. Look for things that only break on one.</div>
+              <div style={{ display: 'flex', gap: 16, marginTop: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                {audit.psi?.mobile_screenshot ? (
+                  <div style={{ width: 200 }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={audit.psi.mobile_screenshot} alt='Mobile screenshot' style={{ width: '100%', borderRadius: 10, border: '1px solid var(--line)' }} />
+                    <div className='snips-cap'>Phone</div>
+                  </div>
+                ) : null}
+                {shot ? (
+                  <div style={{ flex: 1, minWidth: 260, maxHeight: 520, overflow: 'hidden', borderRadius: 10, border: '1px solid var(--line)', position: 'relative' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={shot} alt={'Screenshot of ' + hostOf(url)} loading='lazy' style={{ width: '100%', display: 'block' }} onError={() => setShotFailed((n) => n + 1)} />
+                    <div className='snips-cap' style={{ position: 'absolute', left: 10, bottom: 8, background: '#fff', padding: '2px 8px', borderRadius: 6, margin: 0 }}>Desktop, top of page</div>
+                  </div>
+                ) : null}
+              </div>
+            </section>
           ) : null}
 
           {shot ? (
@@ -513,20 +654,22 @@ function CodeBox({ code, onCopy }) {
   );
 }
 
-function FixRow({ it, open, onToggle, fb, dismissed, onVote, onLink, onCopy, how, section }) {
+function FixRow({ it, open, onToggle, fb, dismissed, onVote, onLink, onCopy, how, section, status, onStatus, approved, prompt }) {
   return (
-    <div id={'fix-' + it.n} className={'fixrow' + (open ? ' open' : '') + (dismissed ? ' dim' : '')} style={{ border: '1px solid var(--line)', borderRadius: 12, background: open ? '#fafbff' : '#fff' }}>
+    <div id={'fix-' + it.n} className={'fixrow' + (open ? ' open' : '') + (dismissed ? ' dim' : '')} style={{ position: 'relative', border: '1px solid var(--line)', borderRadius: 12, background: open ? '#fafbff' : '#fff' }}>
       <button onClick={onToggle} style={{ all: 'unset', cursor: 'pointer', display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 12, alignItems: 'center', padding: '12px 14px', width: 'calc(100% - 28px)' }}>
         <span className={'tier ' + it.tier}>{dismissed ? 'Not an issue' : TIER[it.tier]}</span>
         <span>
           <b style={{ fontWeight: 600, display: 'block' }}>{it.title}</b>
-          <span className='sub' style={{ fontSize: 13 }}>{it.category} · {it.effort} effort</span>
+          <span className='sub' style={{ fontSize: 13 }}>{it.category} · {it.effort} effort{approved ? ' · ' : ''}{approved ? <span className='a-ok'>client approved</span> : null}</span>
         </span>
         <span style={{ color: 'var(--soft)', fontSize: 18 }}>{open ? '⌃' : '⌄'}</span>
       </button>
+      <span style={{ position: 'absolute', right: 44, top: 12 }}><button className={'stat ' + (status === 'doing' ? 'doing' : status === 'done' ? 'done' : '')} onClick={() => onStatus(it.key, status === 'open' ? 'doing' : status === 'doing' ? 'done' : 'open')} title='Click to change status'>{status === 'open' ? 'Open' : status === 'doing' ? 'In progress' : 'Done ✓'}</button></span>
       {open ? (
         <div style={{ padding: '0 14px 16px' }}>
           <p style={{ margin: '0 0 8px', color: '#1e2b42' }}>{it.why}</p>
+          {how?.meaning ? <div className='callout w' style={{ marginBottom: 8 }}><b>What it means for enquiries:</b> {how.meaning}</div> : null}
           <div className='callout b'><b>Fix:</b> {it.fix}{it.wcag ? ' · WCAG ' + it.wcag : ''}</div>
           {how?.steps ? (
             <ol className='steps'>{how.steps.map((x) => <li key={x[0]}><div><b>{x[0]}</b><span>{x[1]}</span></div></li>)}</ol>
@@ -536,6 +679,7 @@ function FixRow({ it, open, onToggle, fb, dismissed, onVote, onLink, onCopy, how
             {section ? <a className='btn sm pri' href={'#s' + section.id}>Go to section #{section.position + 1}</a> : null}
             {(how?.verify || []).map((v) => <a key={v[1]} className='btn sm' href={v[1]} target='_blank' rel='noopener noreferrer' title={v[2]}>{v[0]} ↗</a>)}
             {(how?.docs || []).map((v) => <a key={v[1]} className='btn sm' href={v[1]} target='_blank' rel='noopener noreferrer'>{v[0]} ↗</a>)}
+            <button className='btn sm' onClick={() => onCopy(prompt, 'Build prompt copied')}>Copy build prompt</button>
             <button className='btn sm' onClick={onLink}>Copy link</button>
             <span className='vote'>
               <button className={fb === 'up' ? 'on' : ''} onClick={() => onVote(it.key, 'up')} title='Right call'>👍</button>
@@ -658,6 +802,62 @@ function SectionCard({ s, tools, onPick, onCopy, onLink, feedback, onVote, fixes
         ))}
       </div>
     </article>
+  );
+}
+
+function Rivals({ own, rivals, onRemove }) {
+  const all = [{ host: own.host, own: true, scores: own.scores, facts: { ttfb_ms: own.ttfb != null ? Math.round(own.ttfb) : null, findings: own.findings, trackers: own.trackers, sections: own.sections } }, ...rivals.filter((r) => !r.error)];
+  const failed = rivals.filter((r) => r.error);
+  const rows = [
+    ['Security', (c) => c.scores?.security, 'high'], ['Privacy', (c) => c.scores?.privacy, 'high'], ['SEO checks', (c) => c.scores?.seo, 'high'], ['Speed checks', (c) => c.scores?.performance_checks, 'high'],
+    ['Server response (ms)', (c) => c.facts?.ttfb_ms, 'low'], ['Open findings', (c) => c.facts?.findings, 'low'], ['Trackers', (c) => c.facts?.trackers, 'low'], ['Sections', (c) => c.facts?.sections, 'info'],
+  ];
+  const lead = [], trail = [];
+  const table = rows.map(([name, get, dir]) => {
+    const vals = all.map(get);
+    const num = vals.filter((v) => v != null);
+    const best = dir === 'info' || !num.length ? null : dir === 'high' ? Math.max(...num) : Math.min(...num);
+    const mine = vals[0];
+    const others = vals.slice(1).filter((v) => v != null);
+    if (best != null && mine != null && others.length) {
+      const bestOther = dir === 'high' ? Math.max(...others) : Math.min(...others);
+      if (mine === best && mine !== bestOther) lead.push(name);
+      else if (mine !== best) trail.push(name + ' (' + mine + ' vs ' + bestOther + ')');
+    }
+    return { name, vals, best, dir };
+  });
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table>
+          <thead>
+            <tr><th>Check</th>{all.map((c) => <th key={c.host}>{c.own ? 'This site' : <span>{c.host} <button className='stat' onClick={() => onRemove(c.host)} title='Remove'>×</button></span>}</th>)}</tr>
+          </thead>
+          <tbody>
+            {table.map((r) => (
+              <tr key={r.name}>
+                <td className='area'>{r.name}</td>
+                {r.vals.map((v, i) => <td key={i} style={{ fontWeight: v != null && v === r.best ? 700 : 500, color: v != null && v === r.best ? 'var(--ok)' : undefined }}>{v == null ? '—' : v}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className='two' style={{ marginTop: 14 }}>
+        <div className='callout g'><b>Where this site leads:</b> {lead.length ? lead.join(', ') : 'nowhere yet'}</div>
+        <div className='callout w'><b>Where it trails:</b> {trail.length ? trail.join(', ') : 'nowhere'}</div>
+      </div>
+      {all.slice(1).map((c) => (
+        <details key={c.host} style={{ marginTop: 10 }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>{c.host}: their biggest problems ({(c.top_issues || []).length})</summary>
+          <div className='rel'>
+            {(c.top_issues || []).map((t) => <span key={t.title} style={{ fontSize: 13.5 }}>{t.category}: {t.title} <span className='sub'>({t.severity})</span></span>)}
+            <a href={c.url} target='_blank' rel='noopener noreferrer' style={{ fontSize: 13.5, color: 'var(--brand)', fontWeight: 600 }}>Open {c.host} ↗</a>
+          </div>
+        </details>
+      ))}
+      {failed.map((c) => <div key={c.host} className='callout w' style={{ marginTop: 10 }}>Could not scan {c.host}: {c.error}</div>)}
+    </div>
   );
 }
 

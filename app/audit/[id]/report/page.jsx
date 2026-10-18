@@ -48,10 +48,43 @@ export default function ClientReport() {
   const [a, setA] = useState(null);
   const [err, setErr] = useState(null);
   const [ticked, setTicked] = useState({});
+  const [name, setName] = useState('');
+  const [note, setNote] = useState('');
+  const [sent, setSent] = useState(null);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    fetch('/api/audit/' + id).then((r) => r.json()).then((j) => (j.error ? setErr(j.error) : setA(j))).catch((e) => setErr(e.message));
+    fetch('/api/audit/' + id).then((r) => r.json()).then((j) => {
+      if (j.error) return setErr(j.error);
+      setA(j);
+      const keys = j.plan?.approvals?.keys || [];
+      setTicked(Object.fromEntries(keys.map((k) => [k, true])));
+      setSent(j.plan?.approvals?.at || null);
+      setName(j.plan?.approvals?.name || '');
+      document.title = (j.client || hostOf(j.url)) + ' website review';
+    }).catch((e) => setErr(e.message));
   }, [id]);
+
+  async function sendApproval(keys) {
+    setSending(true);
+    try {
+      const res = await fetch('/api/audit/' + id + '/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ op: 'approve', keys, name, note }) });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) setSent(j.approvals?.at || new Date().toISOString());
+    } finally { setSending(false); }
+  }
+
+  // A standalone copy of the report: this page's markup with its styles inlined.
+  function downloadHtml() {
+    const css = [...document.styleSheets].map((sh) => { try { return [...sh.cssRules].map((r) => r.cssText).join('\n'); } catch { return ''; } }).join('\n');
+    const html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' +
+      document.title.replace(/</g, '') + '</title><style>' + css + '</style></head><body>' + document.body.innerHTML.replace(/<script[\s\S]*?<\/script>/g, '') + '</body></html>';
+    const el = document.createElement('a');
+    el.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+    el.download = hostOf(a.url) + '-website-review.html';
+    el.click();
+    setTimeout(() => URL.revokeObjectURL(el.href), 2000);
+  }
 
   if (err) return <div className='dz'><div style={{ padding: 40 }}>{err}</div></div>;
   if (!a) return <div className='dz'><div style={{ padding: 40 }}>Loading…</div></div>;
@@ -70,22 +103,29 @@ export default function ClientReport() {
   if (scores.length < 4 && a.summary?.site_scores?.security != null) scores.push(['Security', a.summary.site_scores.security]);
   const goTo = (hid) => document.getElementById(hid)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const toc = [['r-sum', 'Summary'], ['r-work', 'What works'], ...groups.map((g) => ['r-' + g[0], GROUP[g[0]]]), ...(sections.length ? [['r-sections', 'Sections']] : []), ['r-go', 'Next steps']];
-  const nowItems = items.filter((i) => i.tier === 'now');
+  const nowItems = items.filter((i) => i.tier !== 'later').slice(0, 10);
+  const brand = plan.brand || {};
+  const approvedAt = sent ? new Date(sent).toLocaleDateString() : null;
 
   return (
-    <div className='dz'>
+    <div className='dz' style={brand.color ? { '--brand': brand.color, '--brand-t': brand.color + '1f' } : undefined}>
       <div className='repwrap'>
         <div className='toc2'>
           <b style={{ fontSize: 12, color: 'var(--soft)', padding: '0 10px 6px' }}>ON THIS PAGE</b>
           {toc.map(([k, n]) => <button key={k} onClick={() => goTo(k)}>{n}</button>)}
           <div style={{ height: 10 }} />
           <button onClick={() => window.print()}>Save as PDF</button>
+          <button onClick={downloadHtml}>Download (.html)</button>
           <button onClick={() => navigator.clipboard.writeText(window.location.href)}>Copy link</button>
         </div>
 
         <div className='rep'>
           <div className='cover'>
-            <small>Website review · {new Date(a.updated_at || a.created_at).toLocaleDateString()}</small>
+            {brand.logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={brand.logo_url} alt={brand.agency || ''} referrerPolicy='no-referrer' style={{ height: 34, maxWidth: 160, objectFit: 'contain', float: 'right', background: '#fff', borderRadius: 8, padding: 4 }} />
+            ) : null}
+            <small>Website review · {new Date(a.updated_at || a.created_at).toLocaleDateString()}{brand.agency ? ' · prepared by ' + brand.agency : ''}</small>
             <h1>{a.client || a.title || hostOf(a.url)}</h1>
             <p><a href={a.url} target='_blank' rel='noopener noreferrer' style={{ color: '#fff' }}>{a.url} ↗</a></p>
           </div>
@@ -114,6 +154,7 @@ export default function ClientReport() {
                     <div>
                       <b>{it.title}</b>
                       <p>{it.why}</p>
+                      {how?.meaning ? <p style={{ color: 'var(--mute)', fontSize: 14 }}><b style={{ color: 'var(--ink)', fontWeight: 600 }}>What it means for you:</b> {how.meaning}</p> : null}
                       <p className='do'><b style={{ fontWeight: 600 }}>What we will do:</b> {it.client_fix || it.fix}</p>
                     </div>
                     {learn ? <a className='more' href={learn} target='_blank' rel='noopener noreferrer'>Learn more ↗</a> : <span />}
@@ -152,7 +193,7 @@ export default function ClientReport() {
 
           <div className='next' id='r-go'>
             <h2>Next steps</h2>
-            <p>Tick what you would like us to start with. We will confirm timing and send updates as each item is done.</p>
+            <p>Tick what you would like us to start with, then send it. We will confirm timing and update you as each item is done.</p>
             <div className='tasks'>
               {nowItems.map((it) => (
                 <div key={it.key} className={'tk' + (ticked[it.key] ? ' on' : '')} style={{ cursor: 'pointer' }} onClick={() => setTicked((t) => ({ ...t, [it.key]: !t[it.key] }))}>
@@ -160,8 +201,14 @@ export default function ClientReport() {
                 </div>
               ))}
             </div>
-            <div className='tools' style={{ marginTop: 16 }}>
-              <button className='btn pri' onClick={() => window.print()}>Save as PDF</button>
+            <div className='ask' style={{ flexWrap: 'wrap' }}>
+              <input placeholder='Your name' value={name} onChange={(e) => setName(e.target.value)} style={{ maxWidth: 220 }} />
+              <input placeholder='Anything we should know? (optional)' value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>
+            <div className='tools' style={{ marginTop: 14 }}>
+              <button className='btn pri' disabled={sending || !Object.values(ticked).some(Boolean) || !name.trim()} onClick={() => sendApproval(Object.keys(ticked).filter((k) => ticked[k]))}>{sending ? 'Sending…' : sent ? 'Update approval' : 'Send approval'}</button>
+              <button className='btn' onClick={() => window.print()}>Save as PDF</button>
+              {approvedAt ? <span className='a-ok' style={{ alignSelf: 'center' }}>Approval received {approvedAt}. Thank you.</span> : null}
             </div>
           </div>
         </div>
