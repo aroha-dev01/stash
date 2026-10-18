@@ -1333,6 +1333,8 @@ function renderAudit(a) {
     area_scores: a.summary?.site_scores || undefined,
     how_it_is_served: a.site?.network || undefined,
     visual_read: a.site?.visual && !a.site.visual.skipped ? a.site.visual : undefined,
+    pages_analysed: (a.site?.pages || []).length > 1 ? a.site.pages.map((p) => ({ path: p.home ? '/' : p.path, status: p.status, title: p.title, sections: p.sections, issues: p.issues })) : undefined,
+    ai_visibility: a.site?.ai ? { score: a.site.ai.score, parts: a.site.ai.parts, bots: (a.site.ai.bots || []).map((b) => ({ name: b.name, role: b.role, robots: b.robots, reachable: b.reachable })), scrapers: a.site.ai.scrapers, llms_txt: a.site.ai.llms_txt, schema_types: a.site.ai.schema_types, sample_questions: a.site.ai.prompts || undefined } : undefined,
     since_last_audit: a.compare || undefined,
     client_approval: a.plan?.approvals || undefined,
     fix_progress: a.plan?.status && Object.keys(a.plan.status).length ? a.plan.status : undefined,
@@ -1349,6 +1351,7 @@ function renderAudit(a) {
     page_basics: a.summary?.basics,
     sections: (a.sections || []).map((s) => ({
       position: s.position + 1,
+      page: s.signals?.page_path || undefined,
       type: s.type,
       heading: s.heading,
       needs_work: s.needs_work != null ? Number(s.needs_work) : undefined,

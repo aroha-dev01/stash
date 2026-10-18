@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { howtoFor } from '@/lib/audit/howto';
+import { AIReport, aiCtx } from '../../ai';
 import '../../dz.css';
 
 // The client's report: light, printable, no jargon and no internal scores.
@@ -91,7 +92,7 @@ export default function ClientReport() {
   if (a.status !== 'done') return <div className='dz'><div style={{ padding: 40 }}>This audit is still running. Open it in Stash to finish, then come back.</div></div>;
 
   const plan = a.plan || {};
-  const ctx = { host: hostOf(a.url), url: a.url };
+  const ctx = aiCtx(a, { host: hostOf(a.url), url: a.url });
   const dismissed = (k) => plan.feedback?.[k]?.verdict === 'down';
   // Only what you have not marked "not an issue", most important first.
   const items = (plan.items || []).filter((i) => !dismissed(i.key)).slice(0, 15);
@@ -134,6 +135,9 @@ export default function ClientReport() {
           </div>
 
           <p id='r-sum' style={{ marginTop: 28, fontSize: 16.5, maxWidth: '64ch' }}>{plan.client_summary || plan.overview}</p>
+          {(a.site?.pages || []).filter((p) => p.status === 'done').length > 1 ? <p className='sub'>We reviewed {a.site.pages.filter((p) => p.status === 'done').length} pages: {a.site.pages.filter((p) => p.status === 'done').map((p) => (p.home ? 'Homepage' : p.path)).join(', ')}.</p> : null}
+
+          <AIReport ai={a.site?.ai} />
 
           {(plan.strengths || []).length ? (
             <>

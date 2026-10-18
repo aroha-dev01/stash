@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { howtoFor } from '@/lib/audit/howto';
 import { fixPrompt, briefMarkdown } from '@/lib/audit/brief';
+import { Progress, PagesCard } from '../progress';
+import { AICard, aiCtx } from '../ai';
 import '../dz.css';
 
 // One audit, laid out as a structured report: scores that link to their
@@ -18,7 +20,7 @@ const STEP_LABEL = {
 };
 const TIER = { now: 'Fix now', next: 'Next', later: 'Later' };
 const LH_LABEL = { performance: 'Speed', accessibility: 'Accessibility', seo: 'SEO', 'best-practices': 'Best practices' };
-const SITE_SCORES = [['security', 'Security', 'Security'], ['privacy', 'Privacy', 'Privacy'], ['seo', 'SEO checks', 'SEO'], ['performance_checks', 'Speed checks', 'Performance']];
+const SITE_SCORES = [['security', 'Security', 'Security'], ['privacy', 'Privacy', 'Privacy'], ['seo', 'SEO checks', 'SEO'], ['performance_checks', 'Speed checks', 'Performance'], ['ai_visibility', 'AI visibility', 'AI visibility']];
 
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 const col = (v) => (v >= 80 ? '#067647' : v >= 55 ? '#b54708' : '#b42318');
@@ -41,6 +43,8 @@ export default function AuditPage() {
   const [rivalText, setRivalText] = useState('');
   const [scanning, setScanning] = useState(false);
   const [brandForm, setBrandForm] = useState(null);
+  const [log, setLog] = useState([]);
+  const statusRef = useRef('queued');
   const alive = useRef(true);
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 2200); };
@@ -66,8 +70,27 @@ export default function AuditPage() {
         if (alive.current) setErr(e.message);
       }
     })();
-    return () => { alive.current = false; };
+    // While it runs, refresh every couple of seconds so the progress is live even
+    // while a long step is still in flight.
+    const poll = setInterval(async () => {
+      if (!alive.current || statusRef.current === 'done' || statusRef.current === 'error') return;
+      try {
+        const r = await fetch('/api/audit/' + id, { cache: 'no-store' });
+        const a = await r.json();
+        if (r.ok && alive.current) setAudit(a);
+      } catch { /* the next tick will try again */ }
+    }, 2500);
+    return () => { alive.current = false; clearInterval(poll); };
   }, [id]);
+
+  // A running record of what Stash is doing, built from the step text as it changes.
+  useEffect(() => {
+    if (!audit) return;
+    statusRef.current = audit.status;
+    const msg = audit.step_detail || (audit.status === 'done' ? 'Audit complete' : null);
+    if (!msg) return;
+    setLog((l) => (l[0]?.msg === msg ? l : [{ t: Date.now(), msg }, ...l].slice(0, 40)));
+  }, [audit?.step_detail, audit?.status]);
 
   // Deep links: #fix-3 opens that fix, #s12 or #checks-Security scroll to it.
   useEffect(() => {
@@ -87,7 +110,7 @@ export default function AuditPage() {
   // Which block the sticky rail highlights.
   useEffect(() => {
     if (!audit) return;
-    const ids = ['overview', 'fix', 'sections', 'tools', 'compete', 'checks', 'ask'];
+    const ids = ['overview', 'pages', 'fix', 'sections', 'tools', 'compete', 'checks', 'ask'];
     const onScroll = () => {
       let cur = ids[0];
       for (const i of ids) { const e = document.getElementById(i); if (e && e.getBoundingClientRect().top < 160) cur = i; }
@@ -177,7 +200,7 @@ export default function AuditPage() {
 
   const site = audit?.site || {};
   const url = audit?.url || '';
-  const ctx = { host: hostOf(url), url };
+  const ctx = aiCtx(audit, { host: hostOf(url), url });
   const sections = audit?.sections || [];
   const toFix = sections.filter((s) => s.status === 'designed' || s.status === 'classified' || s.status === 'error');
   const solid = sections.filter((s) => s.status === 'skipped');
@@ -232,7 +255,8 @@ export default function AuditPage() {
   };
   const shown = items.map((it, i) => ({ ...it, n: i + 1 })).filter((it) => (filter === 'all' || (filter === 'approved' ? approved.has(it.key) : it.tier === filter)) && (!query || (it.title + it.why + it.category).toLowerCase().includes(query.toLowerCase())));
   const cats = [...new Set((audit.checks || []).map((c) => c.category || 'Other'))];
-  const rail = [['overview', 'Overview', ''], ['fix', 'Fix first', items.length || ''], ['sections', 'Sections', sections.length || ''], ['tools', 'Suggested tools', suggested.length || ''], ...(plan ? [['compete', 'Competitors', rivals.length || '']] : []), ['checks', 'Technical checks', (audit.checks || []).length || ''], ['ask', 'Ask', '']];
+  const nPages = (site.pages || []).length;
+  const rail = [['overview', 'Overview', ''], ...(nPages > 1 && !running ? [['pages', 'Pages', nPages]] : []), ...(site.ai && !running ? [['ai', 'AI visibility', site.ai.score]] : []), ['fix', 'Fix first', items.length || ''], ['sections', 'Sections', sections.length || ''], ['tools', 'Suggested tools', suggested.length || ''], ...(plan ? [['compete', 'Competitors', rivals.length || '']] : []), ['checks', 'Technical checks', (audit.checks || []).length || ''], ['ask', 'Ask', '']];
   const scores = SITE_SCORES.filter(([k]) => audit.summary?.site_scores?.[k] != null).map(([k, name, cat]) => ({ name, cat, v: audit.summary.site_scores[k] }));
 
   return (
@@ -293,15 +317,7 @@ export default function AuditPage() {
             </div>
           </section>
 
-          {running ? (
-            <section className='zcard pad'>
-              <h2>Working on it</h2>
-              <div className='prog2'>
-                {STEPS.slice(0, 5).map((s, i) => <span key={s} className={i < stepIdx ? 'done' : i === stepIdx ? 'on' : ''}>{STEP_LABEL[s]}</span>)}
-              </div>
-              <div className='sub' style={{ marginTop: 10 }}>{audit.step_detail || STEP_LABEL[audit.status] || 'Working'}… this takes a minute or two.</div>
-            </section>
-          ) : null}
+          {running || audit.status === 'error' ? <Progress audit={audit} log={log} /> : null}
           {audit.status === 'error' ? <div className='err'>The audit stopped: {audit.error}</div> : null}
 
           {(scores.length || audit.psi?.scores) ? (
@@ -385,6 +401,10 @@ export default function AuditPage() {
             </section>
           ) : null}
 
+          {!running ? <PagesCard audit={audit} /> : null}
+
+          {!running && site.ai ? <AICard audit={audit} items={items.map((it, i) => ({ ...it, n: i + 1 }))} copy={copyText} /> : null}
+
           {plan ? (
             <section id='fix' className='zcard pad'>
               <div className='sechead'>
@@ -444,17 +464,17 @@ export default function AuditPage() {
                 <div className='sub'>The page top to bottom, with a picture from each section. Open one for its diagnosis and directions.</div>
               </div>
             </div>
-            <div className='heat' style={{ gridTemplateColumns: 'repeat(' + Math.min(Math.max(sections.length, 1), 18) + ',1fr)' }}>
+            <div className='heat' style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(56px,1fr))' }}>
               {sections.map((s) => (
-                <a key={s.id} href={'#s' + s.id} className={['designed', 'classified', 'error'].includes(s.status) ? 'd' : ''} title={label(s.type)}>
-                  <span>{s.position + 1}</span><em>{label(s.type)}</em>
+                <a key={s.id} href={'#s' + s.id} className={['designed', 'classified', 'error'].includes(s.status) ? 'd' : ''} title={(s.signals?.page_path || '') + ' · ' + label(s.type)}>
+                  <span>{(s.signals?.page_pos ?? s.position) + 1}</span><em>{(nPages > 1 && s.signals?.page_path && s.signals.page_path !== '/' ? s.signals.page_path + ' ' : '') + label(s.type)}</em>
                 </a>
               ))}
             </div>
           </section>
 
           {toFix.map((s) => (
-            <SectionCard key={s.id} s={s} tools={audit.tools} onPick={pick} onCopy={copyText} onLink={() => anchorLink('s' + s.id)}
+            <SectionCard key={s.id} s={s} multi={nPages > 1} tools={audit.tools} onPick={pick} onCopy={copyText} onLink={() => anchorLink('s' + s.id)}
               feedback={plan?.feedback || {}} onVote={plan ? vote : null}
               fixes={items.map((it, i) => ({ ...it, n: i + 1 })).filter((it) => it.section_id === s.id)} />
           ))}
@@ -669,6 +689,13 @@ function FixRow({ it, open, onToggle, fb, dismissed, onVote, onLink, onCopy, how
       {open ? (
         <div style={{ padding: '0 14px 16px' }}>
           <p style={{ margin: '0 0 8px', color: '#1e2b42' }}>{it.why}</p>
+          {it.pages?.length > 1 ? (
+            <div className='sub' style={{ marginBottom: 8 }}>
+              Found on {it.pages.length} pages:{' '}
+              {it.pages.slice(0, 8).map((u, i) => { let path = u; try { path = new URL(u).pathname || '/'; } catch { /* keep the address */ } return <span key={u}>{i ? ', ' : ''}<a href={u} target='_blank' rel='noopener noreferrer' style={{ color: 'var(--brand)' }}>{path}</a></span>; })}
+              {it.pages.length > 8 ? ' and ' + (it.pages.length - 8) + ' more' : ''}
+            </div>
+          ) : null}
           {how?.meaning ? <div className='callout w' style={{ marginBottom: 8 }}><b>What it means for enquiries:</b> {how.meaning}</div> : null}
           <div className='callout b'><b>Fix:</b> {it.fix}{it.wcag ? ' · WCAG ' + it.wcag : ''}</div>
           {how?.steps ? (
@@ -692,7 +719,7 @@ function FixRow({ it, open, onToggle, fb, dismissed, onVote, onLink, onCopy, how
   );
 }
 
-function SectionCard({ s, tools, onPick, onCopy, onLink, feedback, onVote, fixes }) {
+function SectionCard({ s, tools, onPick, onCopy, onLink, feedback, onVote, fixes, multi }) {
   const sug = s.suggestion || {};
   const pct = Math.round((Number(s.needs_work) || 0) * 100);
   const issueKey = (l) => 'issue:' + s.id + ':' + l;
@@ -702,7 +729,7 @@ function SectionCard({ s, tools, onPick, onCopy, onLink, feedback, onVote, fixes
     <article className='zcard pad' id={'s' + s.id}>
       <div className='dh'>
         <div>
-          <div className='eyebrow'>Section {s.position + 1}</div>
+          <div className='eyebrow'>{multi && s.signals?.page_path ? (s.signals.page_path === '/' ? 'Homepage' : s.signals.page_path) + ' · ' : ''}Section {(s.signals?.page_pos ?? s.position) + 1}</div>
           <h2 style={{ fontSize: 20, marginTop: 2 }}>{label(s.type)}</h2>
           <div className='sub'>{s.heading || (s.text_excerpt || '').slice(0, 110)}</div>
         </div>
