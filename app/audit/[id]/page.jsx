@@ -163,6 +163,20 @@ export default function AuditPage() {
               ) : null}
             </div>
           ) : null}
+          {audit.summary?.site_scores ? (
+            <div className='au-facts'>
+              {[['security', 'Security'], ['privacy', 'Privacy'], ['seo', 'SEO checks'], ['performance_checks', 'Speed checks']]
+                .filter(([k]) => audit.summary.site_scores[k] != null)
+                .map(([k, label]) => {
+                  const v = audit.summary.site_scores[k];
+                  return <span key={k} className={'pill ' + (v >= 80 ? 'oss' : v < 55 ? 'err' : '')}>{label} {v}</span>;
+                })}
+              {site.network?.tls?.days_left != null ? <span className='pill'>cert {site.network.tls.days_left}d left</span> : null}
+              {site.network?.cdn ? <span className='pill'>{site.network.cdn}</span> : null}
+              {site.network?.ttfb_ms ? <span className='pill'>server {Math.round(site.network.ttfb_ms)} ms</span> : null}
+              {(site.network?.trackers || []).length ? <span className='pill'>{site.network.trackers.length} tracker{site.network.trackers.length > 1 ? 's' : ''}</span> : null}
+            </div>
+          ) : null}
           {site.visual && !site.visual.skipped ? (
             <div className='au-facts'>
               {site.visual.look ? <span className='au-muted'>Looks: {site.visual.look}</span> : null}

@@ -1330,6 +1330,8 @@ function renderAudit(a) {
     site: a.site ? { framework: a.site.framework, fonts: a.site.fonts, colours: a.site.colours } : undefined,
     health: a.summary?.health,
     page_judgement: a.site?.judgement || undefined,
+    area_scores: a.summary?.site_scores || undefined,
+    how_it_is_served: a.site?.network || undefined,
     visual_read: a.site?.visual && !a.site.visual.skipped ? a.site.visual : undefined,
     needs_human_check: a.summary?.uncertain_sections?.length ? a.summary.uncertain_sections : undefined,
     lighthouse_mobile: a.psi?.scores || (a.psi?.skipped ? 'not measured: ' + a.psi.skipped : undefined),
