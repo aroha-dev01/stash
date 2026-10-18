@@ -1329,6 +1329,8 @@ function renderAudit(a) {
     view: APP_URL + '/audit/' + a.id,
     site: a.site ? { framework: a.site.framework, fonts: a.site.fonts, colours: a.site.colours } : undefined,
     health: a.summary?.health,
+    page_judgement: a.site?.judgement || undefined,
+    needs_human_check: a.summary?.uncertain_sections?.length ? a.summary.uncertain_sections : undefined,
     lighthouse_mobile: a.psi?.scores || (a.psi?.skipped ? 'not measured: ' + a.psi.skipped : undefined),
     core_web_vitals: a.psi?.vitals ? Object.fromEntries(Object.entries(a.psi.vitals).map(([k, v]) => [k, v.value])) : undefined,
     overview: a.plan?.overview || undefined,
@@ -1351,6 +1353,8 @@ function renderAudit(a) {
         title: d.title,
         idea: d.idea,
         effort: d.effort,
+        jev_check: d.checks || undefined,
+        warning: d.flag || undefined,
         tools: (d.tool_ids || []).map((id) => tools[id]).filter(Boolean)
           .map((t) => ({ id: t.id, name: t.title, url: t.url, preview_image: t.image || undefined, format: t.usage_format })),
         build_prompt: d.prompt,

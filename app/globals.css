@@ -1055,3 +1055,20 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
 .au-ask-row { display: flex; gap: 10px; flex-wrap: wrap; }
 .au-answer { white-space: pre-wrap; line-height: 1.65; color: var(--text); padding: 14px; border-radius: var(--r-md); background: var(--bg-2); border: 1px solid var(--line); }
 .au-head-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+/* audit: feedback + verification */
+.au-fix.dismissed { opacity: .45; }
+.au-fix.dismissed b { text-decoration: line-through; }
+.au-vote { display: flex; gap: 4px; margin-left: 6px; }
+.au-vote button { font-size: 13px; padding: 3px 7px; border-radius: 7px; background: var(--bg-3); border: 1px solid var(--line); opacity: .55; transition: opacity var(--fast) var(--out), transform var(--fast) var(--spring); }
+.au-vote button:hover { opacity: 1; }
+.au-vote button.on { opacity: 1; border-color: var(--accent); background: var(--accent-dim); }
+.au-vote button:active { transform: scale(.9); }
+.au-issue { cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.au-issue span { opacity: .6; }
+.au-issue.off { text-decoration: line-through; opacity: .5; }
+.au-checked { display: flex; gap: 6px; flex-wrap: wrap; font-size: 11.5px; font-family: var(--mono); }
+.au-checked span { padding: 2px 7px; border-radius: 6px; background: var(--bg-3); color: var(--text-3); }
+.au-checked span.ok { color: var(--green); }
+.au-checked span.bad { color: var(--amber); }
+.au-flag { font-size: 12.5px; color: var(--amber); padding: 6px 9px; border-radius: 8px; background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.22); }

@@ -49,8 +49,10 @@ export default function ClientReport() {
   if (a.status !== 'done') return <div className='rp'><style>{CSS}</style>This audit is still running. Open it in Stash to finish, then come back.</div>;
 
   const plan = a.plan || {};
-  const items = (plan.items || []).filter((i) => i.tier !== 'later').slice(0, 10);
-  const sections = (a.sections || []).filter((s) => s.status === 'designed');
+  const dismissed = (k) => plan.feedback?.[k]?.verdict === 'down';
+  // Only what you have not marked "not an issue", most important first.
+  const items = (plan.items || []).filter((i) => i.tier !== 'later' && !dismissed(i.key)).slice(0, 10);
+  const sections = [];
   const band = (v) => (v >= 75 ? 'good' : v >= 50 ? 'ok' : 'bad');
 
   return (
@@ -88,7 +90,7 @@ export default function ClientReport() {
               <li key={it.key}>
                 <span className={'tag ' + it.tier}>{TIER[it.tier]}</span><b>{it.title}</b>
                 <p>{it.why}</p>
-                <p className='muted'>What we will do: {it.fix}</p>
+                <p className='muted'>What we will do: {it.client_fix || it.fix}</p>
               </li>
             ))}
           </ol>

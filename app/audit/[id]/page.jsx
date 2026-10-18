@@ -89,6 +89,24 @@ export default function AuditPage() {
     if (picked != null && j.tools?.length) flash('Filed ' + j.tools.length + ' tool(s) under ' + j.filed_under);
   }
 
+  // 👍/👎 on a finding. Stash learns per-issue thresholds from these, so
+  // problem types you keep rejecting need more certainty next time.
+  async function vote(itemKey, verdict, issueLabel) {
+    const current = audit.plan?.feedback?.[itemKey]?.verdict || null;
+    const next = current === verdict ? null : verdict;
+    setAudit((a) => {
+      const fb = { ...(a.plan?.feedback || {}) };
+      if (next) fb[itemKey] = { verdict: next }; else delete fb[itemKey];
+      return { ...a, plan: { ...a.plan, feedback: fb } };
+    });
+    await fetch('/api/audit/' + id + '/feedback', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ item_key: itemKey, verdict: next, issue_label: issueLabel || null }),
+    }).catch(() => {});
+    if (next === 'down') flash('Marked as not an issue — Stash will weigh this in future audits');
+  }
+
   // Re-audit after changes ship: same URL and client, fresh run, so the two
   // reports can be compared side by side.
   async function rerun() {
@@ -129,6 +147,22 @@ export default function AuditPage() {
             {(site.fonts || []).slice(0, 3).map((f) => <span key={f} className='pill'>{f}</span>)}
             {(site.colours || []).slice(0, 6).map((c) => <span key={c} className='au-swatch' title={c} style={{ background: c }} />)}
           </div>
+          {site.judgement ? (
+            <div className='au-facts'>
+              <span className='pill sect'>{String(site.judgement.business_type || '').replace(/-/g, ' ')}</span>
+              <span className='pill sect'>goal: {String(site.judgement.contact_goal || '').replace(/-/g, ' ')}</span>
+              {site.judgement.offer_clarity != null ? (
+                <span className={'pill ' + (site.judgement.offer_clarity >= 0.66 ? 'oss' : site.judgement.offer_clarity < 0.34 ? 'err' : '')}>
+                  offer clarity {Math.round(site.judgement.offer_clarity * 100)}%
+                </span>
+              ) : null}
+              {site.judgement.proof_on_page != null ? (
+                <span className={'pill ' + (site.judgement.proof_on_page >= 0.6 ? 'oss' : 'err')}>
+                  {site.judgement.proof_on_page >= 0.6 ? 'proof on page' : 'little proof on page'}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           {!running ? (
             <div className='au-head-actions'>
               <button className='ghost-btn' onClick={rerun}>Re-run audit</button>
@@ -189,19 +223,26 @@ export default function AuditPage() {
             <div className='tag-cloud'>{audit.plan.strengths.map((s) => <span key={s} className='pill oss'>✓ {s}</span>)}</div>
           ) : null}
           <ol className='au-fixes'>
-            {(audit.plan.items || []).slice(0, showAll ? 100 : 10).map((it) => (
-              <li key={it.key} className={'au-fix tier-' + it.tier}>
+            {(audit.plan.items || []).slice(0, showAll ? 100 : 10).map((it) => {
+              const fb = audit.plan.feedback?.[it.key]?.verdict;
+              return (
+              <li key={it.key} className={'au-fix tier-' + it.tier + (fb === 'down' ? ' dismissed' : '')}>
                 <div className='au-fix-head'>
-                  <span className={'au-tier tier-' + it.tier}>{TIER[it.tier]}</span>
+                  <span className={'au-tier tier-' + it.tier}>{fb === 'down' ? 'Not an issue' : TIER[it.tier]}</span>
                   <span className='pill'>{it.category}</span>
                   <span className='au-muted'>{it.effort}</span>
                   <div className='au-impact' title={'Impact ' + it.impact + ' / 3'}><i style={{ width: Math.round((it.impact / 3) * 100) + '%' }} /></div>
+                  <div className='au-vote'>
+                    <button className={fb === 'up' ? 'on' : ''} onClick={() => vote(it.key, 'up')} title='Right call'>👍</button>
+                    <button className={fb === 'down' ? 'on' : ''} onClick={() => vote(it.key, 'down')} title='Not an issue'>👎</button>
+                  </div>
                 </div>
                 <b>{it.section_id ? <a href={'#s' + it.section_id}>{it.title}</a> : it.title}</b>
                 <p>{it.why}</p>
                 <p className='au-fix-how'><span>Fix:</span> {it.fix}{it.wcag ? ' · WCAG ' + it.wcag : ''}</p>
               </li>
-            ))}
+              );
+            })}
           </ol>
           {(audit.plan.items || []).length > 10 ? (
             <button className='ghost-btn' onClick={() => setShowAll((v) => !v)}>
@@ -248,7 +289,8 @@ export default function AuditPage() {
 
       {toFix.length ? <h2 className='au-h2'>Sections to improve</h2> : null}
       {toFix.map((s) => (
-        <SectionCard key={s.id} s={s} tools={audit.tools} onPick={pick} onCopy={copy} />
+        <SectionCard key={s.id} s={s} tools={audit.tools} onPick={pick} onCopy={copy}
+          feedback={audit.plan?.feedback || {}} onVote={audit.plan ? vote : null} />
       ))}
 
       {solid.length ? (
@@ -316,9 +358,10 @@ export default function AuditPage() {
   );
 }
 
-function SectionCard({ s, tools, onPick, onCopy }) {
+function SectionCard({ s, tools, onPick, onCopy, feedback, onVote }) {
   const sug = s.suggestion || {};
   const pct = Math.round((Number(s.needs_work) || 0) * 100);
+  const issueKey = (label) => 'issue:' + s.id + ':' + label;
   return (
     <article className='au-card' id={'s' + s.id}>
       <div className='au-card-head'>
@@ -334,8 +377,19 @@ function SectionCard({ s, tools, onPick, onCopy }) {
       </div>
 
       {(s.issues || []).length ? (
-        <div className='tag-cloud'>{s.issues.map((i) => <span key={i} className='pill err'>{i}</span>)}</div>
+        <div className='tag-cloud'>
+          {s.issues.map((i) => {
+            const off = feedback?.[issueKey(i)]?.verdict === 'down';
+            return onVote ? (
+              <button key={i} className={'pill err au-issue' + (off ? ' off' : '')} onClick={() => onVote(issueKey(i), 'down', i)}
+                title={off ? 'Restore this problem' : 'Not an issue here — click to dismiss'}>
+                {i} <span aria-hidden>{off ? '↺' : '×'}</span>
+              </button>
+            ) : <span key={i} className='pill err'>{i}</span>;
+          })}
+        </div>
       ) : null}
+      {s.scores?.uncertain ? <div className='au-note' style={{ margin: 0 }}>Jev was split on this one — worth a look yourself before acting.</div> : null}
 
       {s.status === 'classified' ? <div className='au-muted'>Designing directions for this section…</div> : null}
       {s.status === 'error' ? <div className='au-err'>Could not design this one: {sug.error}</div> : null}
@@ -357,6 +411,17 @@ function SectionCard({ s, tools, onPick, onCopy }) {
               <span className={'pill ' + (d.effort === 'quick' ? 'oss' : d.effort === 'bigger' ? 'err' : '')}>{d.effort}</span>
             </div>
             <p>{d.idea}</p>
+            {d.checks ? (
+              <div className='au-checked'>
+                <span className={d.checks.fixes_problems >= 0.6 ? 'ok' : d.checks.fixes_problems < 0.35 ? 'bad' : ''}>
+                  Fixes the problems: {Math.round(d.checks.fixes_problems * 100)}%
+                </span>
+                <span className={d.checks.invents_facts < 0.3 ? 'ok' : 'bad'}>
+                  {d.checks.invents_facts < 0.3 ? 'No made-up facts' : 'Check the facts'}
+                </span>
+              </div>
+            ) : null}
+            {d.flag ? <div className='au-flag'>{d.flag}</div> : null}
             {(d.tool_ids || []).length ? (
               <div className='au-tools'>
                 {d.tool_ids.map((tid) => tools?.[tid]).filter(Boolean).map((t) => (
