@@ -6,6 +6,7 @@ import { howtoFor } from '@/lib/audit/howto';
 import { fixPrompt, briefMarkdown } from '@/lib/audit/brief';
 import { Progress, PagesCard } from '../progress';
 import { AICard, aiCtx } from '../ai';
+import AuditChat from '../chat';
 import '../dz.css';
 
 // One audit, laid out as a structured report: scores that link to their
@@ -39,6 +40,7 @@ export default function AuditPage() {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState(null);
   const [asking, setAsking] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [active, setActive] = useState('overview');
   const [rivalText, setRivalText] = useState('');
   const [scanning, setScanning] = useState(false);
@@ -576,6 +578,7 @@ export default function AuditPage() {
               <div className='ask'>
                 <input value={question} onChange={(e) => setQuestion(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') ask(); }} placeholder='e.g. What can I fix in one hour? Why is the FAQ flagged?' />
                 <button className='btn pri' onClick={() => ask()} disabled={asking || !question.trim()}>{asking ? 'Thinking…' : 'Ask'}</button>
+                <button className='btn' onClick={() => setChatOpen(true)}>Open chat ✦</button>
               </div>
               <div className='pills'>
                 {['What should I fix in the first hour?', 'Explain the top 3 problems to my client in simple words', 'Which issues hurt enquiries the most?'].map((q) => <button key={q} className='zchip' onClick={() => ask(q)}>{q}</button>)}
@@ -592,6 +595,7 @@ export default function AuditPage() {
           ) : null}
         </main>
       </div>
+      {audit.status === 'done' ? <AuditChat id={id} open={chatOpen} setOpen={setChatOpen} hasAI={!!site.ai} hasRivals={rivals.length > 0} onJump={(hash) => { document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', '#' + hash); }} /> : null}
       {toast ? <div className='ztoast'>{toast}</div> : null}
     </Frame>
   );
