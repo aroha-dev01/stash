@@ -1,0 +1,14 @@
+/* "How to get cited more" list in the AI visibility card */
+.dz .aif-sum{margin:2px 0 12px;color:var(--mute)}
+.dz .aif{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.dz .aif li{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:14px;align-items:start;padding:14px 16px;border:1px solid var(--line,#e5e7eb);border-radius:12px;background:#fff}
+.dz .aif .no{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:14px;background:var(--bg,#f3f4f6);color:var(--ink)}
+.dz .aif .no.hi{background:var(--now-t,#fde8e8);color:var(--now,#b42318)}
+.dz .aif .no.md{background:#fff3d6;color:#8a5a00}
+.dz .aif h4{margin:0;font-size:15px;line-height:1.35}
+.dz .aif h4 a{text-decoration:none;color:var(--ink)}
+.dz .aif h4 a:hover{text-decoration:underline}
+.dz .aif p{margin:4px 0 0;color:var(--mute);font-size:14px;line-height:1.55;max-width:70ch}
+.dz .aif .meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.dz .aif .go{white-space:nowrap;align-self:center}
+@media (max-width:700px){.dz .aif li{grid-template-columns:30px minmax(0,1fr)}.dz .aif .go{grid-column:2;justify-self:start}}

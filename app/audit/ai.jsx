@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import './ai.css';
 
 // "Found by AI assistants": how ready the site is to be read and cited by
 // ChatGPT, Claude, Perplexity, Google AI and Copilot, and which crawlers it
@@ -28,6 +29,11 @@ export function aiCtx(audit, base) {
     qa: site.ai?.signals?.qa_samples || [],
   };
 }
+
+const SEV = { critical: 4, high: 3, medium: 2, low: 1 };
+const SEV_TONE = { critical: 'r', high: 'r', medium: 'y', low: '' };
+const SEV_NAME = { critical: 'Big impact', high: 'Big impact', medium: 'Medium impact', low: 'Small win' };
+const EFFORT = { quick: 'Under an hour', 'half-day': 'About half a day', bigger: 'A day or more' };
 
 const ASKERS = [
   ['ChatGPT', (q) => 'https://chatgpt.com/?q=' + encodeURIComponent(q)],
@@ -133,11 +139,25 @@ export function AICard({ audit, items, copy }) {
 
       <h3 className='prg-h'>How to get cited more</h3>
       {fixes.length ? (
-        <ol className='prg-log'>
-          {fixes.map((f) => (
-            <li key={f.key}><span><a href={'#fix-' + (f.n ?? f.key)}>{f.title}</a>{f.why ? ' — ' + String(f.why).slice(0, 140) : ''}</span></li>
-          ))}
-        </ol>
+        <>
+          <p className='aif-sum'>{fixes.length} fix{fixes.length > 1 ? 'es' : ''} would help AI assistants find and name this business. Work from the top: they are ordered by impact.</p>
+          <ol className='aif'>
+            {[...fixes].sort((x, y) => (SEV[y.severity] || 0) - (SEV[x.severity] || 0)).map((f, i) => (
+              <li key={f.key}>
+                <span className={'no ' + (f.severity === 'high' || f.severity === 'critical' ? 'hi' : f.severity === 'medium' ? 'md' : '')}>{i + 1}</span>
+                <div>
+                  <h4><a href={'#fix-' + (f.n ?? f.key)}>{f.title}</a></h4>
+                  {f.why ? <p>{f.why}</p> : null}
+                  <div className='meta'>
+                    <span className={'zpill ' + (SEV_TONE[f.severity] || '')}>{SEV_NAME[f.severity] || 'Worth doing'}</span>
+                    {f.effort ? <span className='zpill'>{EFFORT[f.effort] || f.effort}</span> : null}
+                  </div>
+                </div>
+                <a className='btn sm go' href={'#fix-' + (f.n ?? f.key)}>See the fix</a>
+              </li>
+            ))}
+          </ol>
+        </>
       ) : <p className='sub'>No gaps found. Keep the key pages current and answer real customer questions in plain words.</p>}
 
       <h3 className='prg-h'>Try it in the assistants</h3>
