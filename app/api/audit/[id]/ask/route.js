@@ -53,6 +53,7 @@ function context(a) {
       scrapers: (ai.scrapers || []).map((s) => s.name + ': ' + s.result),
       llms_txt: ai.llms_txt, schema_types: ai.schema_types, signals: ai.signals,
     } : undefined,
+    real_visitors_and_safety: a.site?.google && !a.site.google.skipped ? { safe_browsing: a.site.google.safe, phone: a.site.google.field?.phone, desktop: a.site.google.field?.desktop } : undefined,
     competitors: (a.plan?.competitors || []).map((c) => ({ site: c.host, scores: c.scores, top_issues: (c.top || c.issues || []).slice?.(0, 4) })),
     since_last_audit: a.compare ? { health: a.compare.health, scores: a.compare.scores, fixed: (a.compare.resolved || []).length, new: (a.compare.added || []).length, still_open: a.compare.still } : undefined,
     client_approval: a.plan?.approvals || undefined,

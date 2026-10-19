@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { howtoFor } from '@/lib/audit/howto';
 import { AIReport, aiCtx } from '../../ai';
+import { FieldReport } from '../../field';
 import '../../dz.css';
 
 // The client's report: light, printable, no jargon and no internal scores.
@@ -137,6 +138,7 @@ export default function ClientReport() {
           <p id='r-sum' style={{ marginTop: 28, fontSize: 16.5, maxWidth: '64ch' }}>{plan.client_summary || plan.overview}</p>
           {(a.site?.pages || []).filter((p) => p.status === 'done').length > 1 ? <p className='sub'>We reviewed {a.site.pages.filter((p) => p.status === 'done').length} pages: {a.site.pages.filter((p) => p.status === 'done').map((p) => (p.home ? 'Homepage' : p.path)).join(', ')}.</p> : null}
 
+          <FieldReport google={a.site?.google} />
           <AIReport ai={a.site?.ai} />
 
           {(plan.strengths || []).length ? (

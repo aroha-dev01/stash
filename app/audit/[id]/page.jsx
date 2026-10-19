@@ -7,6 +7,7 @@ import { fixPrompt, briefMarkdown } from '@/lib/audit/brief';
 import { Progress, PagesCard } from '../progress';
 import { AICard, aiCtx } from '../ai';
 import AuditChat from '../chat';
+import { FieldCard } from '../field';
 import '../dz.css';
 
 // One audit, laid out as a structured report: scores that link to their
@@ -402,6 +403,8 @@ export default function AuditPage() {
               </div>
             </section>
           ) : null}
+
+          {!running && site.google ? <FieldCard google={site.google} /> : null}
 
           {!running ? <PagesCard audit={audit} /> : null}
 
