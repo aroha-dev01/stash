@@ -7,6 +7,7 @@ import { inferSource, CATEGORIES, STAGES, stageFor, stageLabel, SECTIONS, STYLES
 import { buildContext, SYSTEM } from '@/lib/context';
 import { chatJSON } from '@/lib/llm';
 import { createAudit, advance, loadAudit } from '@/lib/audit/run';
+import { designBrief } from '@/lib/design';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -160,12 +161,32 @@ const PROMPTS = [
     ],
   },
   {
+    name: 'design_site',
+    title: 'Design a whole website from my library',
+    description: 'Pick the best premium components for every section of a site, in one coherent style.',
+    arguments: [
+      { name: 'brief', description: 'What the site is for, who it is for, and the feeling wanted.', required: true },
+      { name: 'stack', description: 'Stack in use, comma separated.', required: false },
+    ],
+  },
+  {
+    name: 'design_hero',
+    title: 'Design a hero section from my library',
+    description: 'Pick the best premium hero for a brief, with alternates and install steps.',
+    arguments: [{ name: 'brief', description: 'What the site is for and the feeling wanted.', required: true }],
+  },
+  {
     name: 'whats_rotting',
     title: 'What needs attention',
     description: 'Surface broken links, archived repos and anything that never enriched.',
     arguments: [],
   },
 ];
+
+async function designBriefTool(args) {
+  const { build_brief, ...rest } = await designBrief(args || {});
+  return { build_brief, ...rest };
+}
 
 function getPrompt(name, args = {}) {
   const text = {
@@ -186,6 +207,15 @@ function getPrompt(name, args = {}) {
       (args.stack ? 'Currently uses: ' + args.stack + '\n' : 'Read the manifest to work out what it uses.\n') +
       '\nCall review_project with that, and give me the suggestions worth acting on. Be blunt: if my ' +
       'stack is already fine, say so rather than finding something to recommend.',
+    design_site:
+      'Design a website: ' + (args.brief || '') + '\n' +
+      'Call design_brief first' + (args.stack ? ' with stack ' + args.stack : '') + ' and build from the picks it returns, ' +
+      'in its direction and following its rules. Call how_to_use on each pick before writing integration code. ' +
+      'Show me the preview images of what you chose and why.',
+    design_hero:
+      'Design a hero section: ' + (args.brief || '') + '\n' +
+      'Call design_brief with sections ["hero"], show me the top pick and alternates with their preview images, ' +
+      'then build the one I choose (default to the top pick).',
     whats_rotting:
       'Audit my library. Use search_tools with include_broken true to find dead links, and list_categories ' +
       'for the totals. Flag archived repos and anything unmaintained for over a year. Keep it short: ' +
@@ -456,6 +486,29 @@ const READ_TOOLS = [
         },
       },
       required: ['project'],
+    },
+  },
+  {
+    name: 'design_brief',
+    title: 'Design brief: the best components for the site being built',
+    description:
+      'CALL THIS FIRST whenever the user asks you to design or build a website, landing page, hero, ' +
+      'section or UI ("design me a hero", "build a site for a real estate agency", "make this look premium"). ' +
+      'Describe what is being built and for whom. It reads the brief, then returns for each section the ' +
+      'best-looking component from the user\'s own curated library, ranked on design quality, style fit, ' +
+      'industry fit and motion budget, checked so the picks look like one site. Also returns a style guide ' +
+      '(type, colour, spacing, motion), install commands, inspiration references and rules against generic ' +
+      'AI-looking output. Build from the picks rather than from your own defaults.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        brief: { type: 'string', description: 'What is being built, for whom, and the feeling wanted. E.g. "premium plots and villas website for a Hyderabad real estate developer".' },
+        sections: { type: 'array', items: { type: 'string' }, description: 'Optional: sections to cover, e.g. ["hero","pricing"]. Omit to let Stash decide (one section for "a hero", a full page for "a website").' },
+        style: { type: 'string', description: 'Optional visual style override: minimal, editorial, brutalist, playful, luxury, corporate, futuristic-tech, glassmorphism, retro, organic, bold-colorful, dark-mode.' },
+        stack: { type: 'array', items: { type: 'string' }, description: 'Optional: the stack in use, e.g. ["react","tailwind","nextjs"]. Picks that support it rank higher.' },
+        premium: { type: 'number', description: 'Optional 0-1: how premium the result must feel. Defaults to reading the brief.' },
+      },
+      required: ['brief'],
     },
   },
   {
@@ -1411,6 +1464,7 @@ async function callTool(name, args, canWrite) {
     case 'review_project': return reviewProject(args);
     case 'compare_tools': return compareTools(args);
     case 'find_inspiration': return findInspiration(args);
+    case 'design_brief': return designBriefTool(args);
     case 'ask_stash': return askStash(args);
     case 'mark_used':
       // Writes, but only ever adds provenance to a row that already exists.
@@ -1469,6 +1523,11 @@ async function handle(msg, auth) {
           '7. When working on ONE part of a page (the hero, the pricing block, the footer) — call',
           '   search_tools or find_inspiration with the section argument, plus style to match the',
           '   site\'s look. Every entry lists the sections it helps with, its effects and its styles.',
+          '0. FIRST of all: when the user asks you to design or build a website, landing page, hero or any',
+          '   section or UI, or to make something look premium or good — call design_brief BEFORE writing',
+          '   any markup. It chooses the best-looking components from their library for the site being',
+          '   built, in one coherent style, with a style guide and rules against generic AI-looking output.',
+          '   Build from its picks; do not substitute your own defaults.',
           '8. When the user shares a website URL (a client site, their own site, a competitor) and wants',
           '   it reviewed, improved or redesigned — call audit_site. It returns section-by-section problems',
           '   and redesign directions built on their saved tools. If status is not "done", call get_audit',
