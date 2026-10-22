@@ -8,6 +8,7 @@ import { Progress, PagesCard } from '../progress';
 import { AICard, aiCtx } from '../ai';
 import AuditChat from '../chat';
 import { FieldCard } from '../field';
+import { SecurityCard } from '../security';
 import '../dz.css';
 
 // One audit, laid out as a structured report: scores that link to their
@@ -405,6 +406,7 @@ export default function AuditPage() {
           ) : null}
 
           {!running && site.google ? <FieldCard google={site.google} /> : null}
+          {!running && (site.security || (audit.checks || []).some((c) => c.source === 'security-scan' || c.source === 'code-audit')) ? <SecurityCard security={site.security} checks={audit.checks} /> : null}
 
           {!running ? <PagesCard audit={audit} /> : null}
 

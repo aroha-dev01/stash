@@ -8,6 +8,7 @@ import { buildContext, SYSTEM } from '@/lib/context';
 import { chatJSON } from '@/lib/llm';
 import { createAudit, advance, loadAudit } from '@/lib/audit/run';
 import { designBrief } from '@/lib/design';
+import { importCodeFindings } from '@/lib/audit/codefindings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -609,6 +610,22 @@ const READ_TOOLS = [
 ];
 
 const WRITE_TOOLS = [
+  {
+    name: 'add_code_findings',
+    title: 'Attach a code security review to an audit',
+    description:
+      "Attach the findings.json produced by Cloudflare's security-audit skill (run on the client's source code) to a Stash audit. " +
+      'Confirmed findings appear with severity, unproven leads as "needs validation", and the fix plan is re-ranked. ' +
+      'Use after running the security-audit skill on the project the audit is about.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        audit_id: { type: 'number', description: 'The Stash audit id.' },
+        findings: { type: 'array', items: { type: 'object' }, description: 'The records from findings.json.' },
+      },
+      required: ['audit_id', 'findings'],
+    },
+  },
   {
     name: 'save_tool',
     title: 'Save a tool',
@@ -1471,6 +1488,9 @@ async function callTool(name, args, canWrite) {
       // Gating this behind the token would mean the library never learns,
       // which defeats the point.
       return markUsed(args);
+    case 'add_code_findings':
+      if (!canWrite) throw new Error('Writes are disabled. Connect with STASH_TOKEN.');
+      return importCodeFindings(args.audit_id, args.findings);
     case 'save_tool':
       if (!canWrite) {
         throw new Error(
