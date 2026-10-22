@@ -9,6 +9,7 @@ import { chatJSON } from '@/lib/llm';
 import { createAudit, advance, loadAudit } from '@/lib/audit/run';
 import { designBrief } from '@/lib/design';
 import { importCodeFindings } from '@/lib/audit/codefindings';
+import { backlinkPlan } from '@/lib/audit/backlinks';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -487,6 +488,24 @@ const READ_TOOLS = [
         },
       },
       required: ['project'],
+    },
+  },
+  {
+    name: 'backlink_plan',
+    title: 'Backlink plan for an audited site',
+    description:
+      'A white-hat plan for earning backlinks to a site that has been audited: profiles to claim, ranked link channels for its industry, ' +
+      'the exact Google searches that find real prospects, one-page asset ideas, outreach templates and what to avoid. ' +
+      'Use when the user asks how to get backlinks, rank higher on Google or be found for a client\'s business. ' +
+      'Pass the audit id from audit_site; add city so the searches are local.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        audit_id: { type: 'number', description: 'The Stash audit id.' },
+        city: { type: 'string', description: 'City or area the business serves.' },
+        industry: { type: 'string', description: 'Optional override: real-estate, hospitality, health, professional, saas, ecommerce, education, local, agency, nonprofit.' },
+      },
+      required: ['audit_id'],
     },
   },
   {
@@ -1482,6 +1501,11 @@ async function callTool(name, args, canWrite) {
     case 'compare_tools': return compareTools(args);
     case 'find_inspiration': return findInspiration(args);
     case 'design_brief': return designBriefTool(args);
+    case 'backlink_plan': {
+      const a = await loadAudit(Number(args.audit_id), { withTools: false });
+      if (!a) throw new Error('No audit ' + args.audit_id);
+      return backlinkPlan(a, { city: args.city, industry: args.industry });
+    }
     case 'ask_stash': return askStash(args);
     case 'mark_used':
       // Writes, but only ever adds provenance to a row that already exists.
