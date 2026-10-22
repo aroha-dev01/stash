@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ChatSheet from './chat';
+import IndexHome from './home';
 import { useSwipeDown, useBackToClose } from './swipe';
 import { stageLabel, SECTIONS as SECTION_ORDER } from '@/lib/taxonomy';
 
@@ -32,7 +33,7 @@ export default function Page() {
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState({
     category: null, collection: null, language: null, tags: [], pricing: null,
-    source: null, status: null, oss: false, starred: false, dead: false, stage: null, section: null,
+    source: null, status: null, oss: false, starred: false, dead: false, stage: null, section: null, type: null,
   });
   const [sort, setSort] = useState('newest');
   const [limit, setLimit] = useState(40);
@@ -63,6 +64,7 @@ export default function Page() {
     if (query) p.set('q', query);
     if (filters.stage) p.set('stage', filters.stage);
     if (filters.section) p.set('section', filters.section);
+    if (filters.type) p.set('type', filters.type);
     if (filters.category) p.set('category', filters.category);
     if (filters.collection) p.set('collection', filters.collection);
     if (filters.language) p.set('language', filters.language);
@@ -288,7 +290,7 @@ export default function Page() {
   const clearAll = () =>
     setFilters({
       category: null, collection: null, language: null, tags: [], pricing: null,
-      source: null, status: null, oss: false, starred: false, dead: false, stage: null, section: null,
+      source: null, status: null, oss: false, starred: false, dead: false, stage: null, section: null, type: null,
     });
 
   const activeFilterCount =
@@ -322,89 +324,28 @@ export default function Page() {
   const aiOff = meta && meta.llm && !meta.llm.enabled;
 
   return (
-    <div className={scrolled ? 'app is-scrolled' : 'app'}>
-      <header className='topbar'>
-        <div className='brand'>
-          <span className='brand-mark' />
-          <span className='brand-name'>stash</span>
-        </div>
-        <div className='topbar-right'>
-          <a className='ghost-btn' href='/audit' style={{ textDecoration: 'none' }}>Audit a site</a>
-          <button className='icon-btn' onClick={() => setSheet('filters')} aria-label='Filters'>
-            <svg viewBox='0 0 24 24'><path d='M3 6h18M7 12h10M10 18h4' /></svg>
-            {activeFilterCount > 0 ? <span className='badge' /> : null}
-          </button>
-          <button className='icon-btn' onClick={() => setSheet('menu')} aria-label='Menu'>
-            <svg viewBox='0 0 24 24'>
-              <circle cx='12' cy='5' r='1.4' /><circle cx='12' cy='12' r='1.4' /><circle cx='12' cy='19' r='1.4' />
-            </svg>
-          </button>
-        </div>
-      </header>
-
-      <div className='omni-row'>
-        <div className={isUrl ? 'omni is-url' : 'omni'}>
-          <svg className='omni-icon' viewBox='0 0 24 24'><circle cx='11' cy='11' r='7' /><path d='M20 20l-4-4' /></svg>
-          <input
-            ref={omniRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onSubmit(); } }}
-            placeholder='Search, or paste a link'
-            enterKeyHint='go'
-            autoComplete='off'
-            autoCapitalize='off'
-            autoCorrect='off'
-            spellCheck={false}
-          />
-          {input ? (
-            <button className='omni-clear' onClick={() => { setInput(''); setQuery(''); }} aria-label='Clear'>clr</button>
-          ) : null}
-        </div>
-
-        {/* Only appears once what you typed looks like a link. Pasting itself
-            now lives on the thumb-reachable button at the bottom, so the top
-            of the screen stays quiet while you are just searching. */}
-        {isUrl || saving ? (
-          <button className='paste-btn go' onClick={onSubmit} disabled={saving}>
-            <svg viewBox='0 0 24 24'><path d='M20 6L9 17l-5-5' /></svg>
-            {saving ? 'Saving' : 'Save'}
-          </button>
-        ) : null}
-        {/* A pasted link can be a tool to save OR a client site to review. */}
-        {isUrl && !saving ? (
-          <a className='paste-btn' href={'/audit?url=' + encodeURIComponent(input.trim())}>
-            <svg viewBox='0 0 24 24'><path d='M3 12h4l3-8 4 16 3-8h4' /></svg>
-            Audit
-          </a>
-        ) : null}
-      </div>
-
-      {/* Recent searches. Looking the same thing up twice is common, and
-          retyping it on a phone keyboard is the slowest part of the app. */}
-      {!input && !query && recents.length > 0 ? (
-        <div className='recents'>
-          {recents.map((r) => (
-            <button key={r} className='recent' onClick={() => { setInput(r); setQuery(r); }}>
-              {r}
-            </button>
-          ))}
-          <button
-            className='recent clear'
-            onClick={() => {
-              setRecents([]);
-              try { window.localStorage.removeItem(RECENTS_KEY); } catch {}
-            }}
-          >
-            clear
-          </button>
-        </div>
-      ) : null}
-
-      <div className='hint'>
-        Share a link straight from Twitter or Reddit, or copy it and tap <b>Paste</b>. It gets read, summarised and filed on its own.
-      </div>
-
+    <div className={scrolled ? 'app ix is-scrolled' : 'app ix'}>
+      <IndexHome
+        items={items} total={total} facets={facets} filters={filters} query={query}
+        input={input} setInput={setInput} isUrl={isUrl} saving={saving} busy={busy}
+        dbError={dbError} recents={recents} omniRef={omniRef} crumb={crumb} sort={sort}
+        activeFilterCount={activeFilterCount}
+        onPatch={patchFilters} onClear={clearAll} onSubmit={onSubmit} onPaste={pasteAndSave}
+        onClearQuery={() => setQuery('')}
+        onSort={setSort} onMore={() => setLimit((l) => l + 40)}
+        onFilters={() => setSheet('filters')} onMenu={() => setSheet('menu')}
+        onDetails={(id) => setDetailId(id)} onStar={toggleStar}
+        onTag={toggleTag}
+        onAsk={(text) => { setChatSeed(text || null); setSheet('chat'); }}
+        onCopyText={(text, msg) => {
+          navigator.clipboard.writeText(text).then(() => toast(msg || 'Copied', 'ok'), () => toast('Could not copy', 'bad'));
+        }}
+        onRecent={(r) => { setInput(r); setQuery(r); }}
+        onClearRecents={() => {
+          setRecents([]);
+          try { window.localStorage.removeItem(RECENTS_KEY); } catch {}
+        }}
+      >
       {dbError ? (
         <div className='banner'>
           <b>Cannot reach the database.</b> Your links are safe, they are just
@@ -428,251 +369,7 @@ export default function Page() {
           <b>DEEPSEEK_API_KEY is not set.</b> Links will save, but nothing gets summarised or categorised until you add it.
         </div>
       ) : null}
-
-      {/* The build-phase rail: same links, grouped by when in a client website
-          build you'd reach for them, rather than by what they technically are. */}
-      {facets.stages.length > 0 ? (
-        <div className='catrail stages'>
-          <span className='rail-label'>Build phase</span>
-          <button
-            className={filters.stage ? 'cat-pill stage' : 'cat-pill stage active'}
-            onClick={() => patchFilters({ stage: null })}
-          >
-            All<span className='n'>{facets.stats.total}</span>
-          </button>
-          {facets.stages.filter((s) => s.count > 0).map((s) => (
-            <button
-              key={s.key}
-              title={s.hint}
-              className={filters.stage === s.key ? 'cat-pill stage active' : 'cat-pill stage'}
-              onClick={() => patchFilters({ stage: filters.stage === s.key ? null : s.key, category: null })}
-            >
-              {s.label}<span className='n'>{s.count}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {/* Page sections: "what do I have for a weak pricing block". Ordered
-          roughly top-to-bottom of a page rather than by count, because that is
-          how you walk a client site. Only sections with tagged tools show. */}
-      {facets.sections.length > 0 ? (
-        <div className='catrail sections'>
-          <span className='rail-label'>Section</span>
-          <button
-            className={filters.section ? 'cat-pill sect' : 'cat-pill sect active'}
-            onClick={() => patchFilters({ section: null })}
-          >
-            Any
-          </button>
-          {SECTION_ORDER.map((key) => facets.sections.find((s) => s.name === key))
-            .filter(Boolean)
-            .map((s) => (
-              <button
-                key={s.name}
-                className={filters.section === s.name ? 'cat-pill sect active' : 'cat-pill sect'}
-                onClick={() => patchFilters({ section: filters.section === s.name ? null : s.name })}
-              >
-                {sectionLabel(s.name)}<span className='n'>{s.count}</span>
-              </button>
-            ))}
-        </div>
-      ) : null}
-
-      {/* Projects come first. When you are building something, the question is
-          almost always "what did I gather for THIS", not "what is a UI kit". */}
-      {facets.collections.length > 0 ? (
-        <div className='catrail collections'>
-          <span className='rail-label'>Projects</span>
-          {facets.collections.map((c) => (
-            <button
-              key={c.name}
-              className={filters.collection === c.name ? 'cat-pill coll active' : 'cat-pill coll'}
-              onClick={() => patchFilters({ collection: filters.collection === c.name ? null : c.name })}
-            >
-              {c.name}<span className='n'>{c.count}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {/* Languages, from the repos themselves. Only meaningful for the
-          GitHub half of the library, so the rail hides when there is none. */}
-      {facets.languages.length > 0 ? (
-        <div className='catrail languages'>
-          <span className='rail-label'>Code</span>
-          <button
-            className={filters.language ? 'cat-pill lang' : 'cat-pill lang active'}
-            onClick={() => patchFilters({ language: null })}
-          >
-            All repos<span className='n'>{facets.stats.repos}</span>
-          </button>
-          {facets.languages.map((l) => (
-            <button
-              key={l.name}
-              className={filters.language === l.name ? 'cat-pill lang active' : 'cat-pill lang'}
-              onClick={() => patchFilters({ language: filters.language === l.name ? null : l.name })}
-            >
-              {l.name}<span className='n'>{l.count}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      <div className='catrail'>
-        <button className={filters.category ? 'cat-pill' : 'cat-pill active'} onClick={() => patchFilters({ category: null })}>
-          All<span className='n'>{facets.stats.total}</span>
-        </button>
-        {facets.categories.map((c) => (
-          <button
-            key={c.name}
-            className={filters.category === c.name ? 'cat-pill active' : 'cat-pill'}
-            onClick={() => patchFilters({ category: filters.category === c.name ? null : c.name, stage: null })}
-          >
-            {c.name}<span className='n'>{c.count}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className='body'>
-        <aside className='sidebar'>
-          <div className='stats'>
-            <div className='stat'><b>{facets.stats.total}</b><span>saved</span></div>
-            <div className='stat'><b>{facets.stats.oss}</b><span>open src</span></div>
-          </div>
-
-          {facets.stages.length > 0 ? (
-            <>
-              <div className='side-head'>Build phase</div>
-              <button className={filters.stage ? 'side-item' : 'side-item active'} onClick={() => patchFilters({ stage: null })}>
-                <span className='label'>All</span><span className='count'>{facets.stats.total}</span>
-              </button>
-              {facets.stages.filter((s) => s.count > 0).map((s) => (
-                <button
-                  key={s.key}
-                  title={s.hint}
-                  className={filters.stage === s.key ? 'side-item active' : 'side-item'}
-                  onClick={() => patchFilters({ stage: filters.stage === s.key ? null : s.key, category: null })}
-                >
-                  <span className='label'>{s.label}</span><span className='count'>{s.count}</span>
-                </button>
-              ))}
-            </>
-          ) : null}
-
-          <div className='side-head'>Categories</div>
-          <button className={filters.category ? 'side-item' : 'side-item active'} onClick={() => patchFilters({ category: null })}>
-            <span className='label'>All</span><span className='count'>{facets.stats.total}</span>
-          </button>
-          {facets.categories.map((c) => (
-            <button
-              key={c.name}
-              className={filters.category === c.name ? 'side-item active' : 'side-item'}
-              onClick={() => patchFilters({ category: filters.category === c.name ? null : c.name, stage: null })}
-            >
-              <span className='label'>{c.name}</span><span className='count'>{c.count}</span>
-            </button>
-          ))}
-
-          <div className='side-head'>Quick filters</div>
-          <button className={filters.starred ? 'side-item active' : 'side-item'} onClick={() => patchFilters({ starred: !filters.starred })}>
-            <span className='label'>Starred</span><span className='count'>{facets.stats.starred}</span>
-          </button>
-          <button className={filters.oss ? 'side-item active' : 'side-item'} onClick={() => patchFilters({ oss: !filters.oss })}>
-            <span className='label'>Open source</span><span className='count'>{facets.stats.oss}</span>
-          </button>
-          <button
-            className={filters.status === 'error' ? 'side-item active' : 'side-item'}
-            onClick={() => patchFilters({ status: filters.status === 'error' ? null : 'error' })}
-          >
-            <span className='label'>Needs attention</span><span className='count'>{facets.stats.errored}</span>
-          </button>
-
-          {facets.tags.length > 0 ? (
-            <div>
-              <div className='side-head'>Tags</div>
-              <div className='tag-cloud' style={{ padding: '0 6px' }}>
-                {facets.tags.slice(0, 40).map((t) => (
-                  <button
-                    key={t.name}
-                    className={filters.tags.indexOf(t.name) >= 0 ? 'tag-chip active' : 'tag-chip'}
-                    style={{ padding: '3px 9px', fontSize: '11.5px' }}
-                    onClick={() => toggleTag(t.name)}
-                  >
-                    {t.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </aside>
-
-        <main className='main'>
-          <div className='mainhead'>
-            <div className='crumbs'>{crumb}<small>{total}</small></div>
-            <select className='select' value={sort} onChange={(e) => setSort(e.target.value)}>
-              <option value='newest'>Newest</option>
-              <option value='oldest'>Oldest</option>
-              <option value='stars'>Most stars</option>
-              <option value='title'>A-Z</option>
-            </select>
-          </div>
-
-          <Chips filters={filters} onClear={patchFilters} onToggleTag={toggleTag} />
-
-          <div className='grid'>
-            {items.map((link, i) => (
-              <Card
-                key={link.id}
-                index={i}
-                link={link}
-                onOpen={() => setDetailId(link.id)}
-                onStar={() => toggleStar(link)}
-                onCopy={(l) => {
-                  navigator.clipboard.writeText(l.url).then(
-                    () => toast('Link copied', 'ok'),
-                    () => toast('Could not copy', 'bad')
-                  );
-                }}
-              />
-            ))}
-          </div>
-
-          {!busy && items.length === 0 && !dbError ? (
-            <div className='empty'>
-              {query ? (
-                <div>
-                  <h3>Nothing matches that</h3>
-                  <p>Describe the job, not the name.<br />Try &quot;record my screen as a gif&quot; or &quot;add login to a side project&quot;.</p>
-                  {/* Keyword and vector search both missed. The assistant sees
-                      the whole index, so it can still answer, or tell you
-                      honestly that you own nothing for this. */}
-                  <button
-                    className='primary-btn'
-                    style={{ marginTop: 16 }}
-                    onClick={() => { setChatSeed(query); setSheet('chat'); }}
-                  >
-                    Ask about &quot;{query.length > 28 ? query.slice(0, 28) + '…' : query}&quot;
-                  </button>
-                </div>
-              ) : activeFilterCount || filters.category ? (
-                <div><h3>Nothing here yet</h3><p>Clear a filter, or save something new.</p></div>
-              ) : (
-                <div>
-                  <h3>Your stash is empty</h3>
-                  <p>Share a link here from any app, or copy it and tap <b>Paste</b>.<br />You will get a summary, a category, tags,<br />and how it actually helps you.</p>
-                </div>
-              )}
-            </div>
-          ) : null}
-
-          {items.length < total ? (
-            <div className='more'>
-              <button className='ghost-btn wide' onClick={() => setLimit((l) => l + 40)}>Load more</button>
-            </div>
-          ) : null}
-        </main>
-      </div>
+      </IndexHome>
 
       {/* The two things done most often, parked where the thumb already is.
           Everything else stays at the top where it does not compete. */}
