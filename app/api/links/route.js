@@ -4,6 +4,7 @@ import { embed } from '@/lib/embed';
 import { normalizeUrl } from '@/lib/util';
 import { inferSource, STAGES } from '@/lib/taxonomy';
 import { requireAdmin } from '@/lib/auth';
+import { newEntriesPremium } from '@/lib/settings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,16 @@ export async function GET(req) {
   const limit = Number(p.get('limit')) || 60;
   const offset = Number(p.get('offset')) || 0;
 
+  // Console views the RPC has no parameter for. Same over-fetch approach as
+  // stages: the catalogue is a few hundred rows, so this stays cheap.
+  const premium = p.get('premium'); // '1' members only, '0' public
+  const attention = p.get('attention') === '1'; // failed, still reading, or broken
+  const keep = (r) =>
+    (!stage || stage.categories.includes(r.category)) &&
+    (premium == null || !!r.is_premium === (premium === '1')) &&
+    (!attention || r.dead || r.status === 'error' || r.status === 'pending' || r.status === 'enriching');
+  const postFilter = !!(stage || premium != null || attention);
+
   const { data, error } = await db.rpc('search_links', {
     q: q || null,
     q_embedding,
@@ -49,8 +60,8 @@ export async function GET(req) {
     f_style: p.get('style') || null,
     f_effect: p.get('effect') || null,
     sort_by: p.get('sort') || 'newest',
-    max_rows: stage ? 400 : limit,
-    skip_rows: stage ? 0 : offset,
+    max_rows: postFilter ? 2000 : limit,
+    skip_rows: postFilter ? 0 : offset,
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -58,8 +69,8 @@ export async function GET(req) {
   let rows = data || [];
   let total = rows.length ? Number(rows[0].total_count) : 0;
 
-  if (stage) {
-    rows = rows.filter((r) => stage.categories.includes(r.category));
+  if (postFilter) {
+    rows = rows.filter(keep);
     total = rows.length;
     rows = rows.slice(offset, offset + limit);
   }
@@ -105,6 +116,7 @@ export async function POST(req) {
       source: body.source || inferSource(norm),
       tags: Array.isArray(body.tags) ? body.tags : [],
       status: 'pending',
+      is_premium: await newEntriesPremium(),
     })
     .select('*')
     .single();

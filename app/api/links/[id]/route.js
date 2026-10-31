@@ -16,7 +16,7 @@ export async function GET(_req, { params }) {
 }
 
 const EDITABLE = [
-  'title', 'summary', 'category', 'note', 'pricing', 'source',
+  'title', 'summary', 'category', 'type', 'note', 'pricing', 'source',
   'starred', 'is_open_source', 'url', 'tags', 'collections', 'dead', 'is_premium',
 ];
 

@@ -15,7 +15,7 @@ the Supabase project **Stash** (`soynjbihrhcxyaimptjl`).
 | `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL` | enrichment, the assistant and the Pro MCP tools |
 | `GITHUB_TOKEN` | optional, higher GitHub rate limits for repo stats |
 | `CRON_SECRET` | optional, Vercel signs the nightly refresh with it |
-| `STASH_TOKEN` | optional owner token for scripts; also enables the hidden iOS save endpoint |
+| `STASH_TOKEN` | optional owner token for scripts; never put it in a phone shortcut |
 
 For local work, copy `.env.example` to `.env.local`. Never put real keys in
 `.env.example`, which is committed.
@@ -35,16 +35,18 @@ instead, which is how new members once landed on an old deployment.
 ## Database
 
 Schema changes are versioned in `supabase/migrations` and applied in order.
-New users get a `profiles` row automatically. To make someone a curator or give
-them Pro before payments exist:
+New users get a `profiles` row automatically. Give someone Pro or the curator
+role from `/admin`, Members. The first curator has to be set in SQL:
 
 ```sql
 update public.profiles set is_admin = true, plan = 'pro' where email = '...';
 ```
 
-## The iOS share sheet (hidden)
+## The iOS share sheet (curators only)
 
-`/api/save` answers only to `STASH_TOKEN` and returns 404 otherwise. It is a
-developer feature until it ships as part of Pro; the Shortcut URL is
-`https://stashkit.vercel.app/api/save?token=STASH_TOKEN&text=1&url=` with
-`url=` last.
+Set up from `/admin`, iOS shortcut: switch on "Accept links", create a key for
+each phone and follow the guide there, which also shows live whether the phone
+is connected. `/api/save` answers to a curator's shortcut key
+(`Authorization: Bearer ios_stash_...`) while the switch is on, and to
+`STASH_TOKEN` for scripts. Everyone else gets a 404. Shortcut keys can only
+save links; they never open the MCP server.

@@ -3,6 +3,7 @@ import { db, shape } from '@/lib/supabase';
 import { normalizeUrl } from '@/lib/util';
 import { inferSource } from '@/lib/taxonomy';
 import { requireAdmin } from '@/lib/auth';
+import { newEntriesPremium } from '@/lib/settings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,6 +17,7 @@ export async function POST(req) {
 
   const seen = new Set();
   const rows = [];
+  const is_premium = await newEntriesPremium();
 
   for (const raw of found.slice(0, 200)) {
     let norm;
@@ -35,6 +37,7 @@ export async function POST(req) {
       title: new URL(norm).hostname,
       source: inferSource(norm),
       status: 'pending',
+      is_premium,
     });
   }
 

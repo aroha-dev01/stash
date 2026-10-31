@@ -24,7 +24,7 @@ export default async function SiteHeader({ current }) {
             </Link>
           ) : null}
           <Link href='/pricing' aria-current={here('pricing')}>Pricing</Link>
-          {viewer?.isAdmin ? <Link href='/admin'>Curate</Link> : null}
+          {viewer?.isAdmin ? <Link href='/admin' aria-current={here('admin')}>Curate</Link> : null}
         </nav>
         <span className='k-head-sp' />
         {viewer ? (

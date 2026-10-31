@@ -13,7 +13,7 @@ export async function GET() {
   if (error) return error;
   const { data } = await db
     .from('mcp_keys').select(COLUMNS)
-    .eq('user_id', viewer.id).is('revoked_at', null)
+    .eq('user_id', viewer.id).eq('kind', 'mcp').is('revoked_at', null)
     .order('created_at', { ascending: false });
   return NextResponse.json({ keys: data || [], max: MAX_ACTIVE_KEYS });
 }
@@ -28,7 +28,7 @@ export async function POST(req) {
 
   const { count } = await db
     .from('mcp_keys').select('id', { count: 'exact', head: true })
-    .eq('user_id', viewer.id).is('revoked_at', null);
+    .eq('user_id', viewer.id).eq('kind', 'mcp').is('revoked_at', null);
   if ((count || 0) >= MAX_ACTIVE_KEYS) {
     return NextResponse.json({ error: 'You have ' + MAX_ACTIVE_KEYS + ' keys. Revoke one to make another.' }, { status: 400 });
   }
@@ -46,6 +46,6 @@ export async function DELETE(req) {
   const { viewer, error } = await requireViewer();
   if (error) return error;
   const id = Number(req.nextUrl.searchParams.get('id'));
-  await db.from('mcp_keys').update({ revoked_at: new Date().toISOString() }).eq('id', id).eq('user_id', viewer.id);
+  await db.from('mcp_keys').update({ revoked_at: new Date().toISOString() }).eq('id', id).eq('user_id', viewer.id).eq('kind', 'mcp');
   return NextResponse.json({ ok: true });
 }

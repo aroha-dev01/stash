@@ -3,6 +3,8 @@ import { db, shape } from '@/lib/supabase';
 import { enrichLink } from '@/lib/enrich';
 import { normalizeUrl } from '@/lib/util';
 import { inferSource } from '@/lib/taxonomy';
+import { resolveKey } from '@/lib/mcpkeys';
+import { getSetting, newEntriesPremium } from '@/lib/settings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -50,6 +52,7 @@ async function save(rawUrl, note, source) {
       source: source || inferSource(norm),
       tags: [],
       status: 'pending',
+      is_premium: await newEntriesPremium(),
     })
     .select('*')
     .single();
@@ -107,22 +110,45 @@ function summarise(body) {
 }
 
 /**
- * Hidden for now: the iOS share sheet is a developer-only feature until it
- * ships as part of Pro. It answers only to STASH_TOKEN, as a bearer header or
- * ?token= placed BEFORE url= (url= must stay last, see rawUrlParam).
+ * Hidden from members for now: the iOS share sheet is a curator feature until
+ * it ships as part of Pro. It answers to:
+ *
+ *   - a shortcut key (ios_stash_...) belonging to a curator, while the switch
+ *     in /admin is on. Sent as `Authorization: Bearer <key>`.
+ *   - STASH_TOKEN, for scripts, whatever the switch says.
+ *
+ * Anything else gets a 404, so the endpoint does not advertise itself. A key in
+ * the query (?key= or ?token=) also works but must come BEFORE url=, which has
+ * to stay last (see rawUrlParam).
  */
-function allowed(req) {
-  const token = process.env.STASH_TOKEN;
-  if (!token) return false;
+async function allowed(req) {
   const header = req.headers.get('authorization') || '';
-  return header === 'Bearer ' + token || req.nextUrl.searchParams.get('token') === token;
+  const p = req.nextUrl.searchParams;
+  const given = (header.startsWith('Bearer ') ? header.slice(7) : p.get('key') || p.get('token') || '').trim();
+  if (!given) return false;
+
+  const token = process.env.STASH_TOKEN;
+  if (token && given === token) return true;
+
+  if (!(await getSetting('ios_shortcut')).enabled) return false;
+  const who = await resolveKey(given, 'shortcut');
+  return !!who?.isAdmin;
 }
 
 const notFound = () => NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
 
+// ?check=1 proves the key and the connection without saving anything. Using
+// the key records "last heard from", which is what /admin shows as connected.
+const CONNECTED = 'Stash is connected. Share any page to save it.';
+
 export async function GET(req) {
-  if (!allowed(req)) return notFound();
+  if (!(await allowed(req))) return notFound();
   const p = req.nextUrl.searchParams;
+  if (p.get('check') === '1') {
+    return p.get('text') === '1'
+      ? new NextResponse(CONNECTED, { headers: { 'content-type': 'text/plain; charset=utf-8' } })
+      : NextResponse.json({ ok: true, message: CONNECTED });
+  }
   const url = rawUrlParam(req.url) || p.get('url') || p.get('u');
   if (!url) return NextResponse.json({ ok: false, error: 'Pass ?url=' }, { status: 400 });
 
@@ -140,7 +166,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  if (!allowed(req)) return notFound();
+  if (!(await allowed(req))) return notFound();
   const body = await req.json().catch(() => ({}));
   const url = body.url || body.u || req.nextUrl.searchParams.get('url');
   if (!url) return NextResponse.json({ ok: false, error: 'Pass a url' }, { status: 400 });
