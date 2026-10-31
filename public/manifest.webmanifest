@@ -1,12 +1,12 @@
 {
   "name": "Stash",
   "short_name": "Stash",
-  "description": "Your personal database of tools, repos and links.",
+  "description": "A curated library of skills, plugins, MCP servers and developer tools, for you and your coding agents.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0b0c0e",
-  "theme_color": "#0b0c0e",
+  "background_color": "#070707",
+  "theme_color": "#070707",
   "icons": [
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DrawerMark, CheckIcon } from '../_ui/icons';
+import { StashMark, CheckIcon } from '../_ui/icons';
 import AgentCharacter from '../_ui/AgentCharacter';
 import { useAgent } from './AgentProvider';
 import { track } from '../_ui/track';
@@ -247,7 +247,7 @@ export default function McpScrollDemo({ picks, query }) {
                 </span>
               </span>
               <span className='k-mx-node k-mx-node-hub'>
-                <span className='k-agent-tile'><DrawerMark size={18} /></span>
+                <span className='k-agent-tile'><StashMark size={18} /></span>
                 Stash MCP
               </span>
             </div>

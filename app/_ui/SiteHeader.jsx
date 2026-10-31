@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getViewer } from '@/lib/auth';
-import { DrawerMark } from './icons';
+import { StashMark } from './icons';
 import MenuToggle from './MenuToggle';
 import AccountMenu from './AccountMenu';
 
@@ -14,7 +14,7 @@ export default async function SiteHeader({ current }) {
     <header className='k-head' data-k-head>
       <div className='k-wrap k-head-in'>
         <Link className='k-brand' href='/' aria-label='Stash, home'>
-          <DrawerMark />
+          <StashMark />
           stash
         </Link>
         <nav className='k-nav' id='k-nav' aria-label='Main'>

@@ -235,12 +235,18 @@ p { text-wrap: pretty; }
 .k-foot nav h2 { font-family: var(--font-label); font-size: var(--text-label); font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-dim); margin-bottom: 6px; }
 .k-foot nav a { text-decoration: none; color: var(--color-text-secondary); width: fit-content; }
 .k-foot nav a:hover { color: var(--color-text-primary); }
-.k-foot-base { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 40px; margin-top: clamp(48px, 6vw, 72px); padding-top: 24px; border-top: 1px solid var(--color-border); }
+/* The wordmark's letters sit between y 13 and 357 of its 380-unit box; the
+   box is cropped at 190 so the rule below cuts them through the middle. */
+.k-foot-giant { margin-top: clamp(48px, 7vw, 88px); aspect-ratio: 2064 / 190; overflow: hidden; color: var(--color-text-primary); -webkit-mask-image: linear-gradient(to bottom, #000 15%, rgba(0, 0, 0, 0.2) 100%); mask-image: linear-gradient(to bottom, #000 15%, rgba(0, 0, 0, 0.2) 100%); opacity: 0.6; }
+.k-foot-giant svg { display: block; width: 100%; height: auto; }
+.k-foot-base { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 40px; padding-top: 24px; border-top: 1px solid var(--color-border-strong); }
 .k-aruo { display: inline-flex; align-items: center; gap: 10px; color: var(--color-text-secondary); text-decoration: none; padding: 6px 0; }
-.k-aruo span { font-size: 13.5px; }
+.k-aruo span { font-size: 14px; }
+.k-aruo b { font-weight: 600; color: var(--color-text-primary); }
 .k-aruo:hover { color: var(--color-text-primary); }
-.k-aruo svg:first-of-type { transition: transform 700ms var(--ease-out-expo); }
-.k-aruo:hover svg:first-of-type { transform: rotate(-14deg); }
+.k-aruo:hover b { color: var(--color-accent); }
+.k-aruo svg { transition: transform 700ms var(--ease-out-expo); }
+.k-aruo:hover svg { transform: rotate(-14deg); }
 .k-foot-tm { margin: 0; font-size: 12.5px; max-width: 62ch; }
 @media (max-width: 860px) { .k-foot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .k-foot-brand { grid-column: 1 / -1; } }
 

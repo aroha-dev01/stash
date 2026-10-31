@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { DrawerMark } from '../_ui/icons';
+import { StashMark } from '../_ui/icons';
 import { clientOf, HERO_AGENTS } from '../_ui/agents';
 import AgentCharacter from '../_ui/AgentCharacter';
 import { useAgent } from './AgentProvider';
@@ -182,7 +182,7 @@ export default function AgentOrbit({ picks }) {
 
       <div className='k-orb-hub' key={'hub-' + agent.key} style={{ left: HUB.x + '%', top: HUB.y + '%' }} aria-hidden='true'>
         <span className='k-orb-hub-glow' />
-        <span className='k-orb-hub-core'><DrawerMark size={30} /></span>
+        <span className='k-orb-hub-core'><StashMark size={30} /></span>
         <span className='k-orb-hub-label'>Stash MCP</span>
       </div>
 

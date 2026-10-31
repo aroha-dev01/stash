@@ -1,12 +1,14 @@
 // Small inline icons, drawn on a 16px grid and stroked with currentColor.
 
-export function DrawerMark({ size = 22 }) {
-  // The Stash mark: a drawer with its pull.
+// The Stash mark: a cabinet with two drawers pulled out to opposite sides,
+// which leaves an S. public/icon.svg draws the same path on a dark tile.
+export const STASH_PATH =
+  'M6.67 2H17.33A4.67 4.67 0 0 1 22 6.67H8.17A1.5 1.5 0 0 0 8.17 9.67H22V17.33A4.67 4.67 0 0 1 17.33 22H6.67A4.67 4.67 0 0 1 2 17.33H15.83A1.5 1.5 0 0 0 15.83 14.33H2V6.67A4.67 4.67 0 0 1 6.67 2Z';
+
+export function StashMark({ size = 22 }) {
   return (
-    <svg width={size} height={size} viewBox='0 0 24 24' fill='none' aria-hidden='true'>
-      <rect x='3' y='5' width='18' height='14' rx='3' stroke='currentColor' strokeWidth='1.8' />
-      <path d='M3 11.5h18' stroke='currentColor' strokeWidth='1.8' />
-      <path d='M10 8.2h4M10 14.8h4' stroke='currentColor' strokeWidth='1.8' strokeLinecap='round' />
+    <svg width={size} height={size} viewBox='0 0 24 24' fill='currentColor' aria-hidden='true'>
+      <path d={STASH_PATH} />
     </svg>
   );
 }

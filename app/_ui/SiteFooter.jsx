@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { TOOLKITS } from '@/lib/taxonomy';
-import { DrawerMark } from './icons';
+import { StashMark } from './icons';
 import { AruoMark, AruoWordmark } from './brands';
 
 export default function SiteFooter() {
@@ -10,7 +10,7 @@ export default function SiteFooter() {
         <div className='k-foot-grid'>
           <div className='k-foot-brand'>
             <Link className='k-brand' href='/' aria-label='Stash, home'>
-              <DrawerMark />
+              <StashMark />
               stash
             </Link>
             <p>A curated library of skills, plugins, MCP servers and developer tools, for you and the agents you build with.</p>
@@ -33,11 +33,14 @@ export default function SiteFooter() {
             <Link href='/account'>Account</Link>
           </nav>
         </div>
+        {/* Aruo's wordmark, set large and cut in half by the rule below it. */}
+        <div className='k-foot-giant' aria-hidden='true'>
+          <AruoWordmark />
+        </div>
         <div className='k-foot-base'>
-          <a className='k-aruo' href='https://www.aruo.dev/' rel='noopener' aria-label='A product by Aruo, visit aruo.dev'>
-            <span>A product by</span>
-            <AruoMark size={18} />
-            <AruoWordmark height={10} />
+          <a className='k-aruo' href='https://www.aruo.dev/' rel='noopener'>
+            <AruoMark size={16} />
+            <span>Built by <b>aruo.dev</b></span>
           </a>
           <p className='k-foot-tm'>
             Claude, Cursor, GitHub Copilot and Windsurf are trademarks of their owners. Stash works with them over MCP and is
