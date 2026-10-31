@@ -164,7 +164,7 @@ export default function Page() {
     fetch('/api/meta').then((r) => r.json()).then(setMeta).catch(() => {});
   }, [loadFacets]);
 
-  // /?open=42 opens that tool's detail panel — used by audit tool cards.
+  // /?open=42 opens that tool's detail panel, so links from elsewhere can deep-link.
   useEffect(() => {
     const open = Number(new URLSearchParams(window.location.search).get('open'));
     if (Number.isFinite(open) && open > 0) setDetailId(open);

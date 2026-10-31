@@ -110,7 +110,6 @@ function Row({ link, open, current, onToggle, a }) {
                 <button type='button' onClick={(e) => { e.stopPropagation(); a.copy(a.forAgent(link), 'Copied for your agent'); }}>Copy for agent</button>
                 <button type='button' className={link.starred ? 'on' : ''} onClick={(e) => { e.stopPropagation(); a.star(link); }}>{link.starred ? '★ Starred' : '☆ Star'}</button>
                 <button type='button' onClick={(e) => { e.stopPropagation(); a.ask(link.title || link.domain); }}>Ask Stash</button>
-                <a href={'/audit?url=' + encodeURIComponent(link.url)} onClick={(e) => e.stopPropagation()}>Audit this site</a>
               </div>
             </div>
           </td>
@@ -173,7 +172,6 @@ export default function IndexHome(p) {
         <button type='button' className='ix-btn' onClick={() => setShowRefine((v) => !v)} aria-pressed={showRefine}>Projects &amp; phases</button>
         <button type='button' className='ix-btn' onClick={p.onFilters}>Filters{p.activeFilterCount ? ' · ' + p.activeFilterCount : ''}</button>
         <button type='button' className='ix-btn' onClick={p.onMenu} aria-label='More'>More</button>
-        <a className='ix-btn p' href='/audit'>Audit a site</a>
       </div>
 
       <section className='ix-hero'>
@@ -200,9 +198,7 @@ export default function IndexHome(p) {
           />
           {input ? <button type='button' className='ix-clr' onClick={() => { setInput(''); p.onClearQuery(); }} aria-label='Clear search'>✕</button> : <kbd>/</kbd>}
         </div>
-        {isUrl || saving ? <button type='button' className='ix-btn p' onClick={p.onSubmit} disabled={saving}>{saving ? 'Saving…' : 'Save link'}</button> : null}
-        {isUrl && !saving ? <a className='ix-btn' href={'/audit?url=' + encodeURIComponent(input.trim())}>Audit this site</a> : null}
-        <div className='ix-seg' role='group' aria-label='Type'>
+        {isUrl || saving ? <button type='button' className='ix-btn p' onClick={p.onSubmit} disabled={saving}>{saving ? 'Saving…' : 'Save link'}</button> : null}        <div className='ix-seg' role='group' aria-label='Type'>
           <button type='button' aria-pressed={!filters.type} onClick={() => p.onPatch({ type: null })}>All</button>
           {TYPES.map(([k, l]) => (
             <button key={k} type='button' aria-pressed={filters.type === k} onClick={() => p.onPatch({ type: filters.type === k ? null : k })}>

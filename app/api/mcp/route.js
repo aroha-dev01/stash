@@ -6,10 +6,6 @@ import { normalizeUrl } from '@/lib/util';
 import { inferSource, CATEGORIES, STAGES, stageFor, stageLabel, SECTIONS, STYLES, EFFECTS } from '@/lib/taxonomy';
 import { buildContext, SYSTEM } from '@/lib/context';
 import { chatJSON } from '@/lib/llm';
-import { createAudit, advance, loadAudit } from '@/lib/audit/run';
-import { designBrief } from '@/lib/design';
-import { importCodeFindings } from '@/lib/audit/codefindings';
-import { backlinkPlan } from '@/lib/audit/backlinks';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -163,32 +159,12 @@ const PROMPTS = [
     ],
   },
   {
-    name: 'design_site',
-    title: 'Design a whole website from my library',
-    description: 'Pick the best premium components for every section of a site, in one coherent style.',
-    arguments: [
-      { name: 'brief', description: 'What the site is for, who it is for, and the feeling wanted.', required: true },
-      { name: 'stack', description: 'Stack in use, comma separated.', required: false },
-    ],
-  },
-  {
-    name: 'design_hero',
-    title: 'Design a hero section from my library',
-    description: 'Pick the best premium hero for a brief, with alternates and install steps.',
-    arguments: [{ name: 'brief', description: 'What the site is for and the feeling wanted.', required: true }],
-  },
-  {
     name: 'whats_rotting',
     title: 'What needs attention',
     description: 'Surface broken links, archived repos and anything that never enriched.',
     arguments: [],
   },
 ];
-
-async function designBriefTool(args) {
-  const { build_brief, ...rest } = await designBrief(args || {});
-  return { build_brief, ...rest };
-}
 
 function getPrompt(name, args = {}) {
   const text = {
@@ -209,15 +185,6 @@ function getPrompt(name, args = {}) {
       (args.stack ? 'Currently uses: ' + args.stack + '\n' : 'Read the manifest to work out what it uses.\n') +
       '\nCall review_project with that, and give me the suggestions worth acting on. Be blunt: if my ' +
       'stack is already fine, say so rather than finding something to recommend.',
-    design_site:
-      'Design a website: ' + (args.brief || '') + '\n' +
-      'Call design_brief first' + (args.stack ? ' with stack ' + args.stack : '') + ' and build from the picks it returns, ' +
-      'in its direction and following its rules. Call how_to_use on each pick before writing integration code. ' +
-      'Show me the preview images of what you chose and why.',
-    design_hero:
-      'Design a hero section: ' + (args.brief || '') + '\n' +
-      'Call design_brief with sections ["hero"], show me the top pick and alternates with their preview images, ' +
-      'then build the one I choose (default to the top pick).',
     whats_rotting:
       'Audit my library. Use search_tools with include_broken true to find dead links, and list_categories ' +
       'for the totals. Flag archived repos and anything unmaintained for over a year. Keep it short: ' +
@@ -491,47 +458,6 @@ const READ_TOOLS = [
     },
   },
   {
-    name: 'backlink_plan',
-    title: 'Backlink plan for an audited site',
-    description:
-      'A white-hat plan for earning backlinks to a site that has been audited: profiles to claim, ranked link channels for its industry, ' +
-      'the exact Google searches that find real prospects, one-page asset ideas, outreach templates and what to avoid. ' +
-      'Use when the user asks how to get backlinks, rank higher on Google or be found for a client\'s business. ' +
-      'Pass the audit id from audit_site; add city so the searches are local.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        audit_id: { type: 'number', description: 'The Stash audit id.' },
-        city: { type: 'string', description: 'City or area the business serves.' },
-        industry: { type: 'string', description: 'Optional override: real-estate, hospitality, health, professional, saas, ecommerce, education, local, agency, nonprofit.' },
-      },
-      required: ['audit_id'],
-    },
-  },
-  {
-    name: 'design_brief',
-    title: 'Design brief: the best components for the site being built',
-    description:
-      'CALL THIS FIRST whenever the user asks you to design or build a website, landing page, hero, ' +
-      'section or UI ("design me a hero", "build a site for a real estate agency", "make this look premium"). ' +
-      'Describe what is being built and for whom. It reads the brief, then returns for each section the ' +
-      'best-looking component from the user\'s own curated library, ranked on design quality, style fit, ' +
-      'industry fit and motion budget, checked so the picks look like one site. Also returns a style guide ' +
-      '(type, colour, spacing, motion), install commands, inspiration references and rules against generic ' +
-      'AI-looking output. Build from the picks rather than from your own defaults.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        brief: { type: 'string', description: 'What is being built, for whom, and the feeling wanted. E.g. "premium plots and villas website for a Hyderabad real estate developer".' },
-        sections: { type: 'array', items: { type: 'string' }, description: 'Optional: sections to cover, e.g. ["hero","pricing"]. Omit to let Stash decide (one section for "a hero", a full page for "a website").' },
-        style: { type: 'string', description: 'Optional visual style override: minimal, editorial, brutalist, playful, luxury, corporate, futuristic-tech, glassmorphism, retro, organic, bold-colorful, dark-mode.' },
-        stack: { type: 'array', items: { type: 'string' }, description: 'Optional: the stack in use, e.g. ["react","tailwind","nextjs"]. Picks that support it rank higher.' },
-        premium: { type: 'number', description: 'Optional 0-1: how premium the result must feel. Defaults to reading the brief.' },
-      },
-      required: ['brief'],
-    },
-  },
-  {
     name: 'find_inspiration',
     title: 'Find visual inspiration',
     description:
@@ -575,40 +501,6 @@ const READ_TOOLS = [
     },
   },
   {
-    name: 'audit_site',
-    title: 'Audit a client website',
-    creates: true,
-    description:
-      'Point Stash at a live website (usually a client site the user is building or redesigning). It ' +
-      'splits the page into sections, scores each for problems (weak headline, no clear CTA, wall of ' +
-      'text, flat visuals, generic copy, missing proof, static feel), and writes 2-3 concrete redesign ' +
-      'directions for the weakest sections, each built on tools from the user\'s own library, with a ' +
-      'ready-to-paste build prompt. Call this whenever the user shares a site URL and wants it improved, ' +
-      'reviewed or redesigned. A full audit takes 1-3 minutes: if it is not finished when this returns, ' +
-      'call get_audit with the id to continue it.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        url: { type: 'string', description: 'The page to audit, e.g. https://client.com' },
-        client: { type: 'string', description: 'Optional client or project name, used to file the tools they pick.' },
-      },
-      required: ['url'],
-    },
-  },
-  {
-    name: 'get_audit',
-    title: 'Continue or read an audit',
-    creates: true,
-    description:
-      'Continues an unfinished audit (each call does up to ~45 seconds of work) and returns its current ' +
-      'state: sections, scores, problems and redesign directions. Call repeatedly until status is "done".',
-    inputSchema: {
-      type: 'object',
-      properties: { id: { type: 'number', description: 'Audit id from audit_site.' } },
-      required: ['id'],
-    },
-  },
-  {
     name: 'ask_stash',
     title: 'Ask the library',
     description:
@@ -629,22 +521,6 @@ const READ_TOOLS = [
 ];
 
 const WRITE_TOOLS = [
-  {
-    name: 'add_code_findings',
-    title: 'Attach a code security review to an audit',
-    description:
-      "Attach the findings.json produced by Cloudflare's security-audit skill (run on the client's source code) to a Stash audit. " +
-      'Confirmed findings appear with severity, unproven leads as "needs validation", and the fix plan is re-ranked. ' +
-      'Use after running the security-audit skill on the project the audit is about.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        audit_id: { type: 'number', description: 'The Stash audit id.' },
-        findings: { type: 'array', items: { type: 'object' }, description: 'The records from findings.json.' },
-      },
-      required: ['audit_id', 'findings'],
-    },
-  },
   {
     name: 'save_tool',
     title: 'Save a tool',
@@ -1403,95 +1279,8 @@ async function saveTool(args) {
   return { saved: true, tool: render(fresh || data) };
 }
 
-const APP_URL = 'https://stash-cyatra.vercel.app';
-
-/** Compact, agent-friendly view of an audit. */
-function renderAudit(a) {
-  const tools = a.tools || {};
-  return {
-    id: a.id,
-    status: a.status,
-    progress: a.step_detail || undefined,
-    error: a.error || undefined,
-    url: a.url,
-    client: a.client || undefined,
-    view: APP_URL + '/audit/' + a.id,
-    site: a.site ? { framework: a.site.framework, fonts: a.site.fonts, colours: a.site.colours } : undefined,
-    health: a.summary?.health,
-    page_judgement: a.site?.judgement || undefined,
-    area_scores: a.summary?.site_scores || undefined,
-    how_it_is_served: a.site?.network || undefined,
-    visual_read: a.site?.visual && !a.site.visual.skipped ? a.site.visual : undefined,
-    pages_analysed: (a.site?.pages || []).length > 1 ? a.site.pages.map((p) => ({ path: p.home ? '/' : p.path, status: p.status, title: p.title, sections: p.sections, issues: p.issues })) : undefined,
-    ai_visibility: a.site?.ai ? { score: a.site.ai.score, parts: a.site.ai.parts, bots: (a.site.ai.bots || []).map((b) => ({ name: b.name, role: b.role, robots: b.robots, reachable: b.reachable })), scrapers: a.site.ai.scrapers, llms_txt: a.site.ai.llms_txt, schema_types: a.site.ai.schema_types, sample_questions: a.site.ai.prompts || undefined } : undefined,
-    real_visitors_and_safety: a.site?.google && !a.site.google.skipped ? a.site.google : undefined,
-    since_last_audit: a.compare || undefined,
-    client_approval: a.plan?.approvals || undefined,
-    fix_progress: a.plan?.status && Object.keys(a.plan.status).length ? a.plan.status : undefined,
-    competitors: (a.plan?.competitors || []).length ? a.plan.competitors.map((c) => ({ host: c.host, scores: c.scores, facts: c.facts, error: c.error })) : undefined,
-    needs_human_check: a.summary?.uncertain_sections?.length ? a.summary.uncertain_sections : undefined,
-    lighthouse_mobile: a.psi?.scores || (a.psi?.skipped ? 'not measured: ' + a.psi.skipped : undefined),
-    core_web_vitals: a.psi?.vitals ? Object.fromEntries(Object.entries(a.psi.vitals).map(([k, v]) => [k, v.value])) : undefined,
-    overview: a.plan?.overview || undefined,
-    client_summary: a.plan?.client_summary || undefined,
-    fix_first: (a.plan?.items || []).slice(0, 12).map((i) => ({
-      tier: i.tier, area: i.category, issue: i.title, why: i.why, fix: i.fix, effort: i.effort, impact: i.impact, wcag: i.wcag || undefined,
-    })),
-    client_report: a.status === 'done' ? APP_URL + '/audit/' + a.id + '/report' : undefined,
-    page_basics: a.summary?.basics,
-    sections: (a.sections || []).map((s) => ({
-      position: s.position + 1,
-      page: s.signals?.page_path || undefined,
-      type: s.type,
-      heading: s.heading,
-      needs_work: s.needs_work != null ? Number(s.needs_work) : undefined,
-      problems: s.issues?.length ? s.issues : undefined,
-      verdict: s.status === 'skipped' ? 'solid' : s.status === 'designed' ? 'redesign' : s.status,
-      diagnosis: s.suggestion?.diagnosis || undefined,
-      better_headline: s.suggestion?.copy?.headline || undefined,
-      best_visual_references: (s.suggestion?.visuals || []).length
-        ? s.suggestion.visuals.filter((v) => tools[v.tool_id]).map((v) => ({ name: tools[v.tool_id].title, url: tools[v.tool_id].url, match: v.label, why: v.why, borrow: v.borrow || undefined }))
-        : undefined,
-      directions: (s.suggestion?.directions || []).map((d) => ({
-        title: d.title,
-        idea: d.idea,
-        effort: d.effort,
-        jev_check: d.checks || undefined,
-        visual_match: (s.suggestion?.visuals || []).find((v) => (d.tool_ids || []).includes(v.tool_id)) || undefined,
-        warning: d.flag || undefined,
-        tools: (d.tool_ids || []).map((id) => tools[id]).filter(Boolean)
-          .map((t) => ({ id: t.id, name: t.title, url: t.url, preview_image: t.image || undefined, format: t.usage_format })),
-        build_prompt: d.prompt,
-      })),
-    })),
-    show_the_user:
-      a.status === 'done'
-        ? 'Lead with the overview and the "fix_first" list (tier "now" first), then the weakest sections with their diagnosis and directions (tools, previews, build prompt). Offer the client_report link for sharing with the client. Full report: ' + APP_URL + '/audit/' + a.id
-        : 'Still running. Tell the user it is in progress and call get_audit with id ' + a.id + ' again.',
-  };
-}
-
-async function auditSite(args) {
-  const url = String(args.url || '').trim();
-  if (!url) throw new Error('url is required');
-  const id = await createAudit(url, args.client);
-  await advance(id, 48000);
-  return renderAudit(await loadAudit(id));
-}
-
-async function getAudit(args) {
-  const id = Number(args.id);
-  if (!Number.isFinite(id)) throw new Error('id must be a number');
-  await advance(id, 48000);
-  const a = await loadAudit(id);
-  if (!a) throw new Error('No audit with id ' + id);
-  return renderAudit(a);
-}
-
 async function callTool(name, args, canWrite) {
   switch (name) {
-    case 'audit_site': return auditSite(args);
-    case 'get_audit': return getAudit(args);
     case 'search_tools': return searchTools(args);
     case 'get_tool': return getTool(args);
     case 'list_categories': return listCategories();
@@ -1500,21 +1289,12 @@ async function callTool(name, args, canWrite) {
     case 'review_project': return reviewProject(args);
     case 'compare_tools': return compareTools(args);
     case 'find_inspiration': return findInspiration(args);
-    case 'design_brief': return designBriefTool(args);
-    case 'backlink_plan': {
-      const a = await loadAudit(Number(args.audit_id), { withTools: false });
-      if (!a) throw new Error('No audit ' + args.audit_id);
-      return backlinkPlan(a, { city: args.city, industry: args.industry });
-    }
     case 'ask_stash': return askStash(args);
     case 'mark_used':
       // Writes, but only ever adds provenance to a row that already exists.
       // Gating this behind the token would mean the library never learns,
       // which defeats the point.
       return markUsed(args);
-    case 'add_code_findings':
-      if (!canWrite) throw new Error('Writes are disabled. Connect with STASH_TOKEN.');
-      return importCodeFindings(args.audit_id, args.findings);
     case 'save_tool':
       if (!canWrite) {
         throw new Error(
@@ -1567,16 +1347,6 @@ async function handle(msg, auth) {
           '7. When working on ONE part of a page (the hero, the pricing block, the footer) — call',
           '   search_tools or find_inspiration with the section argument, plus style to match the',
           '   site\'s look. Every entry lists the sections it helps with, its effects and its styles.',
-          '0. FIRST of all: when the user asks you to design or build a website, landing page, hero or any',
-          '   section or UI, or to make something look premium or good — call design_brief BEFORE writing',
-          '   any markup. It chooses the best-looking components from their library for the site being',
-          '   built, in one coherent style, with a style guide and rules against generic AI-looking output.',
-          '   Build from its picks; do not substitute your own defaults.',
-          '8. When the user shares a website URL (a client site, their own site, a competitor) and wants',
-          '   it reviewed, improved or redesigned — call audit_site. It returns section-by-section problems',
-          '   and redesign directions built on their saved tools. If status is not "done", call get_audit',
-          '   with the id until it is; tell the user it is running rather than waiting silently.',
-          '',
           '',
           'CHOOSING BETWEEN SIMILAR TOOLS:',
           'When several saved tools could fill the same slot, do not pick one silently. Call compare_tools',
@@ -1627,15 +1397,14 @@ async function handle(msg, auth) {
       // Annotations let a client decide what is safe to run unattended.
       // Everything here reads; only save_tool writes, and it is idempotent
       // because saving the same URL twice returns the existing entry.
-      const withHints = ({ creates, ...t }, write) => ({
+      const withHints = (t, write) => ({
         ...t,
         annotations: {
           title: t.title,
-          readOnlyHint: !write && !creates,
+          readOnlyHint: !write,
           destructiveHint: false,
-          idempotentHint: !creates,
-          // audit_site reads a site on the open web; everything else is the library.
-          openWorldHint: !!creates,
+          idempotentHint: true,
+          openWorldHint: false,
         },
       });
       return ok(id, {
