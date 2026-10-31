@@ -180,6 +180,14 @@ p { text-wrap: pretty; }
 .k-head-in { display: flex; align-items: center; gap: 12px; height: var(--nav-h); }
 .k-brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-family: var(--font-display); font-weight: 700; font-size: 21px; letter-spacing: -0.035em; color: var(--color-text-primary); }
 .k-brand svg { color: var(--color-accent); }
+/* The homepage logo with its maker underneath, the byline aligned to the word. */
+.k-lockup { display: grid; justify-items: start; gap: 1px; }
+.k-lockup .k-brand { line-height: 1.15; }
+.k-by { display: inline-flex; align-items: center; gap: 5px; margin-left: 32px; padding: 2px 0; font-size: 11.5px; line-height: 1; letter-spacing: 0.01em; color: var(--color-text-dim); text-decoration: none; transition: color 160ms ease; }
+.k-by b { font-weight: 600; color: var(--color-text-secondary); transition: color 160ms ease; }
+.k-by:hover, .k-by:hover b { color: var(--color-text-primary); }
+.k-by svg { transition: transform 700ms var(--ease-out-expo); }
+.k-by:hover svg { transform: rotate(-14deg); }
 .k-nav { display: flex; align-items: center; gap: 2px; margin-left: 20px; }
 .k-nav a { padding: 8px 12px; border-radius: var(--radius-pill); color: var(--color-text-secondary); text-decoration: none; font-size: var(--text-nav); font-weight: 500; line-height: 1.2; letter-spacing: -0.005em; transition: color 160ms ease, background-color 160ms ease; }
 .k-nav a:hover, .k-nav a[aria-current='page'] { color: var(--color-text-primary); background: rgba(239, 239, 235, 0.06); }

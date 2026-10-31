@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getViewer } from '@/lib/auth';
 import { StashMark } from './icons';
+import { AruoMark } from './brands';
 import MenuToggle from './MenuToggle';
 import AccountMenu from './AccountMenu';
 
@@ -13,10 +14,24 @@ export default async function SiteHeader({ current }) {
   return (
     <header className='k-head' data-k-head>
       <div className='k-wrap k-head-in'>
-        <Link className='k-brand' href='/' aria-label='Stash, home'>
-          <StashMark />
-          stash
-        </Link>
+        {current === 'home' ? (
+          // The homepage signs the logo: who makes Stash, linking out to them.
+          <div className='k-lockup'>
+            <Link className='k-brand' href='/' aria-label='Stash, home'>
+              <StashMark />
+              stash
+            </Link>
+            <a className='k-by' href='https://www.aruo.dev/' rel='noopener'>
+              <AruoMark size={11} />
+              <span>by <b>aruo.dev</b></span>
+            </a>
+          </div>
+        ) : (
+          <Link className='k-brand' href='/' aria-label='Stash, home'>
+            <StashMark />
+            stash
+          </Link>
+        )}
         <nav className='k-nav' id='k-nav' aria-label='Main'>
           <Link href='/explore' aria-current={here('explore')}>Explore</Link>
           <Link href='/#categories'>Categories</Link>
