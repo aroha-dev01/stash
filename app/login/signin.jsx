@@ -19,10 +19,16 @@ export default function SignIn() {
       process.env.NEXT_PUBLIC_SUPABASE_URL,
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
     );
+    // Where to land after sign-in travels in a short-lived cookie, not in the
+    // redirect address. Supabase only returns to an address on its allow-list,
+    // and `/auth/callback?next=...` does not match a plain
+    // `/auth/callback` entry. When nothing matches it silently falls back to
+    // the Site URL, which sent new members to the wrong deployment.
     const next = new URLSearchParams(window.location.search).get('next') || '/explore';
+    document.cookie = 'stash_next=' + encodeURIComponent(next) + '; path=/; max-age=600; samesite=lax';
     const { error } = await sb.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin + '/auth/callback?next=' + encodeURIComponent(next) },
+      options: { redirectTo: window.location.origin + '/auth/callback' },
     });
     // On success the browser is already on its way to Google.
     if (error) {

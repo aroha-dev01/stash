@@ -21,6 +21,14 @@ const OPEN = [
 ];
 
 export async function proxy(request) {
+  // If Supabase falls back to the Site URL, the sign-in code arrives on the
+  // home page. Finish the sign-in instead of showing the landing page.
+  if (request.nextUrl.pathname === '/' && request.nextUrl.searchParams.has('code')) {
+    const to = request.nextUrl.clone();
+    to.pathname = '/auth/callback';
+    return NextResponse.redirect(to);
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

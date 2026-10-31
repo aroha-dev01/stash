@@ -25,9 +25,12 @@ For local work, copy `.env.example` to `.env.local`. Never put real keys in
 Google is the only provider. Under Authentication, URL Configuration:
 
 - Site URL: `https://stashkit.vercel.app`
-- Redirect URLs: `https://stashkit.vercel.app/auth/callback`,
-  `http://localhost:3000/auth/callback`, and the preview pattern
-  `https://*-aroha5.vercel.app/auth/callback` if previews should sign in.
+- Redirect URLs: `https://stashkit.vercel.app/**`,
+  `http://localhost:3000/**`, and the preview pattern
+  `https://*-aroha5.vercel.app/**` if previews should sign in.
+
+If an address is missing, Supabase silently sends people to the Site URL
+instead, which is how new members once landed on an old deployment.
 
 ## Database
 
