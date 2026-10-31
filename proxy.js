@@ -11,9 +11,14 @@ import { createServerClient } from '@supabase/ssr';
 // This is the optimistic check only. Each route still resolves the user
 // itself (lib/auth.js currentUser) before touching anyone's data.
 
-// Reachable signed out: sign-in itself, and endpoints that authenticate
-// their own callers with a token (MCP clients, the iOS Shortcut, Vercel cron).
-const OPEN = [/^\/login$/, /^\/auth\//, /^\/api\/mcp/, /^\/api\/save/, /^\/api\/cron\//, /^\/api\/backfill/];
+// Reachable signed out: the public site and catalogue (premium entries come
+// back locked), sign-in itself, and endpoints that authenticate their own
+// callers (MCP keys, the hidden iOS endpoint, Vercel cron, backfills).
+const OPEN = [
+  /^\/$/, /^\/explore$/, /^\/pricing$/, /^\/login$/, /^\/auth\//,
+  /^\/api\/catalog(\/|$)/,
+  /^\/api\/mcp/, /^\/api\/save/, /^\/api\/cron\//, /^\/api\/backfill/,
+];
 
 export async function proxy(request) {
   let response = NextResponse.next({ request });

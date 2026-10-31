@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
 import { enrichLink } from '@/lib/enrich';
+import { requireAdminOrToken } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,13 +17,8 @@ export const maxDuration = 60;
 const SLICE = 6;
 
 export async function POST(req) {
-  const secret = process.env.STASH_TOKEN;
-  if (secret) {
-    const auth = req.headers.get('authorization') || '';
-    if (auth !== 'Bearer ' + secret) {
-      return NextResponse.json({ error: 'Unauthorised' }, { status: 401 });
-    }
-  }
+  const { error: denied } = await requireAdminOrToken(req);
+  if (denied) return denied;
 
   const started = Date.now();
 
@@ -65,7 +61,9 @@ export async function POST(req) {
   });
 }
 
-export async function GET() {
+export async function GET(req) {
+  const { error: denied } = await requireAdminOrToken(req);
+  if (denied) return denied;
   const { count: pending } = await db
     .from('links')
     .select('id', { count: 'exact', head: true })

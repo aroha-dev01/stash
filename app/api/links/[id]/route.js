@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { db, shape } from '@/lib/supabase';
 import { embed, embeddingText } from '@/lib/embed';
+import { requireAdmin } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(_req, { params }) {
+  const { error: denied } = await requireAdmin();
+  if (denied) return denied;
   const { id } = await params;
   const { data } = await db.from('links').select('*').eq('id', Number(id)).maybeSingle();
   if (!data) return NextResponse.json({ error: 'not found' }, { status: 404 });
@@ -14,7 +17,7 @@ export async function GET(_req, { params }) {
 
 const EDITABLE = [
   'title', 'summary', 'category', 'note', 'pricing', 'source',
-  'starred', 'is_open_source', 'url', 'tags', 'collections', 'dead',
+  'starred', 'is_open_source', 'url', 'tags', 'collections', 'dead', 'is_premium',
 ];
 
 /** Collection names are matched exactly in queries, so they are normalised. */
@@ -23,6 +26,8 @@ const cleanList = (v) => [
 ];
 
 export async function PATCH(req, { params }) {
+  const { error: denied } = await requireAdmin();
+  if (denied) return denied;
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
 
@@ -49,6 +54,8 @@ export async function PATCH(req, { params }) {
 }
 
 export async function DELETE(_req, { params }) {
+  const { error: denied } = await requireAdmin();
+  if (denied) return denied;
   const { id } = await params;
   await db.from('links').delete().eq('id', Number(id));
   return NextResponse.json({ ok: true });

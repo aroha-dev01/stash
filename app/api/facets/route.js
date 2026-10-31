@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/supabase';
 import { STAGES } from '@/lib/taxonomy';
+import { requireAdmin } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,8 @@ const EMPTY = {
 };
 
 export async function GET() {
+  const { error: denied } = await requireAdmin();
+  if (denied) return denied;
   const { data, error } = await db.rpc('stash_facets');
   if (error) return NextResponse.json(EMPTY);
   const f = data || {};

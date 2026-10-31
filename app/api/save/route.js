@@ -106,7 +106,22 @@ function summarise(body) {
   return bits.filter(Boolean).join(' — ');
 }
 
+/**
+ * Hidden for now: the iOS share sheet is a developer-only feature until it
+ * ships as part of Pro. It answers only to STASH_TOKEN, as a bearer header or
+ * ?token= placed BEFORE url= (url= must stay last, see rawUrlParam).
+ */
+function allowed(req) {
+  const token = process.env.STASH_TOKEN;
+  if (!token) return false;
+  const header = req.headers.get('authorization') || '';
+  return header === 'Bearer ' + token || req.nextUrl.searchParams.get('token') === token;
+}
+
+const notFound = () => NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
+
 export async function GET(req) {
+  if (!allowed(req)) return notFound();
   const p = req.nextUrl.searchParams;
   const url = rawUrlParam(req.url) || p.get('url') || p.get('u');
   if (!url) return NextResponse.json({ ok: false, error: 'Pass ?url=' }, { status: 400 });
@@ -125,6 +140,7 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
+  if (!allowed(req)) return notFound();
   const body = await req.json().catch(() => ({}));
   const url = body.url || body.u || req.nextUrl.searchParams.get('url');
   if (!url) return NextResponse.json({ ok: false, error: 'Pass a url' }, { status: 400 });

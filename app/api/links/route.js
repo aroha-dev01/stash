@@ -3,6 +3,7 @@ import { db, shape } from '@/lib/supabase';
 import { embed } from '@/lib/embed';
 import { normalizeUrl } from '@/lib/util';
 import { inferSource, STAGES } from '@/lib/taxonomy';
+import { requireAdmin } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,6 +11,8 @@ export const dynamic = 'force-dynamic';
 /* ------------------------------------------------------------ list/search */
 
 export async function GET(req) {
+  const { error: denied } = await requireAdmin();
+  if (denied) return denied;
   const p = req.nextUrl.searchParams;
   const q = (p.get('q') || '').trim();
 
@@ -71,6 +74,8 @@ export async function GET(req) {
 /* -------------------------------------------------------------- save one */
 
 export async function POST(req) {
+  const { error: denied } = await requireAdmin();
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
 
   let norm;

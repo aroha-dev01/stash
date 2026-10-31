@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { llmStatus } from '@/lib/llm';
 import { CATEGORIES } from '@/lib/taxonomy';
+import { requireAdmin } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  const { error: denied } = await requireAdmin();
+  if (denied) return denied;
   return NextResponse.json({
     categories: CATEGORIES,
     llm: llmStatus(),

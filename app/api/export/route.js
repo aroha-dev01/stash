@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { db, shape } from '@/lib/supabase';
+import { requireAdmin } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /** Your whole stash as JSON. The embedding column is dropped — it's derived. */
 export async function GET() {
+  const { error: denied } = await requireAdmin();
+  if (denied) return denied;
   const { data, error } = await db
     .from('links')
     .select('*')

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { chatStream, llmStatus } from '@/lib/llm';
 import { buildContext, SYSTEM } from '@/lib/context';
 import { STASH_SOURCES_MARKER } from '@/lib/util';
+import { requireViewer } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,6 +11,13 @@ export const maxDuration = 60;
 const MAX_TURNS = 12;
 
 export async function POST(req) {
+  // The assistant costs a model call per message, so it is a Pro feature.
+  const { viewer, error: denied } = await requireViewer();
+  if (denied) return denied;
+  if (!viewer.isPro) {
+    return NextResponse.json({ error: 'The AI assistant is part of Stash Pro.', upgrade: '/pricing' }, { status: 402 });
+  }
+
   const status = llmStatus();
   if (!status.enabled) {
     return NextResponse.json({ error: status.reason }, { status: 400 });
@@ -31,7 +39,7 @@ export async function POST(req) {
 
   let context;
   try {
-    context = await buildContext(lastUser ? lastUser.content : '');
+    context = await buildContext(lastUser ? lastUser.content : '', { owner: viewer.isAdmin });
   } catch (e) {
     return NextResponse.json({ error: 'Could not read your stash: ' + e.message }, { status: 500 });
   }

@@ -1,64 +1,38 @@
-# Connecting Stash to Claude as an MCP connector
+# Connecting an agent to Stash over MCP
 
-Once deployed, Stash speaks MCP at:
+Stash speaks MCP (streamable HTTP, JSON-RPC over POST) at:
 
 ```
 https://stashkit.vercel.app/api/mcp
 ```
 
-Check it in a browser first — a plain GET returns a health summary listing the
-tools and whether writing is enabled.
+A plain GET returns a health summary listing the tools.
 
-## Add it in Claude
+## Keys
 
-Settings → Connectors → **Add custom connector** → paste the URL above.
+Every call needs a member's key. Members create keys on `/account`; the page
+shows the exact setup for Claude, Claude Code, Cursor, VS Code (Copilot) and
+Windsurf with the key filled in. Send it as `Authorization: Bearer <key>`, or
+as `?key=` for clients that only take a URL (Claude's custom connectors).
 
-Claude will call `initialize`, then `tools/list`, and the four tools appear.
+Stash stores only a SHA-256 of each key, and a revoked key stops working on the
+next call. `STASH_TOKEN` (a Vercel env var) still works as an owner key for
+scripts.
 
-## What your agents get
+## What each plan gets
 
-| Tool | Use |
+| Tool | Plan |
 |---|---|
-| `search_tools` | Search by problem description, not product name. Filters for category and open-source. |
-| `get_tool` | Full detail on one entry, including your private note. |
-| `list_categories` | The shape of the library, with counts. |
-| `save_tool` | Save a new find. Only present when a token is configured. |
+| `search_tools`, `get_tool`, `how_to_use`, `list_categories`, `find_inspiration` | Free |
+| `mark_used` | Free (adds the tool to the member's saved list) |
+| `build_stack`, `compare_tools`, `review_project`, `ask_stash` | Pro |
+| `save_tool` | Curators only |
 
-The server also sends `instructions` on connect, telling the agent to check
-your library *before* recommending anything third-party. That is what makes it
-behave like your library rather than a search engine.
+Pro tools stay listed for free members, prefixed `[Stash Pro]`, and answer with
+an upgrade message, so an agent can tell the user why.
 
-## Writing is off by default
+## Privacy
 
-Read tools are always available. `save_tool` only appears once `STASH_TOKEN` is
-set as an environment variable in Vercel.
-
-The reasoning: an open endpoint that reads a list of public tool links is a
-small exposure. An open endpoint that lets anyone write into your library is
-not. Rather than forcing you to configure a secret before anything works at
-all, the server drops to read-only on its own and says so in its health check.
-
-### To enable saving
-
-1. Invent a long random string.
-2. Vercel → stashkit → Settings → Environment Variables → add
-   `STASH_TOKEN` with that value.
-3. Redeploy (`npx vercel --prod`).
-4. Connect using the URL with the token appended:
-
-   ```
-   https://stashkit.vercel.app/api/mcp?token=YOUR_TOKEN
-   ```
-
-   A bearer header is also accepted, and is the better option wherever the
-   client lets you set headers, since URLs end up in logs.
-
-Once a token is set, **all** access requires it, reads included.
-
-## Trying it
-
-Ask Claude, in any project connected to it:
-
-> What have I saved that would help me build a pricing page?
-
-It should call `search_tools`, then answer from your own collection.
+The owner's private fields (`note`, `why`, `used_in`, `collections`, which name
+real client projects) are only ever returned to an admin key. `render()` leaves
+them out and `scrub()` strips them from every other response as a backstop.

@@ -2,12 +2,15 @@ import { NextResponse } from 'next/server';
 import { db, shape } from '@/lib/supabase';
 import { normalizeUrl } from '@/lib/util';
 import { inferSource } from '@/lib/taxonomy';
+import { requireAdmin } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /** Paste anything containing URLs — a list, a thread, exported bookmarks. */
 export async function POST(req) {
+  const { error: denied } = await requireAdmin();
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const found = String(body.text || '').match(/https?:\/\/[^\s"'<>)\]]+/g) || [];
 
