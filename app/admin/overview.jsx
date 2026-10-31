@@ -1,5 +1,6 @@
 'use client';
 
+import { PRO } from '@/lib/plans';
 import { useState } from 'react';
 import { State, ago, api } from './ui';
 
@@ -102,8 +103,8 @@ export default function Overview({ data, error, onReload, onGo, toast }) {
       </div>
 
       <div className='k-stats'>
-        <Stat value={s.entries} label='Entries' sub={s.premium + ' members only'} />
-        <Stat value={s.members} label='Members' sub={s.pro + ' on Pro'} />
+        <Stat value={s.entries} label='Entries' sub={s.premium + ' for members or ' + PRO.name} />
+        <Stat value={s.members} label='Members' sub={s.pro + ' on ' + PRO.name} />
         <Stat value={s.agentKeys} label='Agent keys' sub='connected to MCP' />
         <Stat value={s.errored + s.working + s.dead} label='Need a look' sub={s.dead + ' broken, ' + s.errored + ' failed'} />
       </div>

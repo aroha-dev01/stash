@@ -3,6 +3,8 @@ import { chatStream, llmStatus } from '@/lib/llm';
 import { buildContext, SYSTEM } from '@/lib/context';
 import { STASH_SOURCES_MARKER } from '@/lib/util';
 import { requireViewer } from '@/lib/auth';
+import { policyFor } from '@/lib/access';
+import { PRO } from '@/lib/plans';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,7 +17,7 @@ export async function POST(req) {
   const { viewer, error: denied } = await requireViewer();
   if (denied) return denied;
   if (!viewer.isPro) {
-    return NextResponse.json({ error: 'The AI assistant is part of Stash Pro.', upgrade: '/pricing' }, { status: 402 });
+    return NextResponse.json({ error: 'The AI assistant is part of Stash ' + PRO.name + '.', upgrade: '/pricing' }, { status: 402 });
   }
 
   const status = llmStatus();
@@ -39,7 +41,7 @@ export async function POST(req) {
 
   let context;
   try {
-    context = await buildContext(lastUser ? lastUser.content : '', { owner: viewer.isAdmin });
+    context = await buildContext(lastUser ? lastUser.content : '', { owner: viewer.isAdmin, policy: await policyFor(viewer) });
   } catch (e) {
     return NextResponse.json({ error: 'Could not read your stash: ' + e.message }, { status: 500 });
   }

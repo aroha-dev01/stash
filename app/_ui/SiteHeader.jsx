@@ -2,43 +2,38 @@ import Link from 'next/link';
 import { getViewer } from '@/lib/auth';
 import { DrawerMark } from './icons';
 import MenuToggle from './MenuToggle';
+import AccountMenu from './AccountMenu';
 
 /** The one header for every public page. Reads the session on the server. */
 export default async function SiteHeader({ current }) {
   const viewer = await getViewer().catch(() => null);
   const here = (k) => (current === k ? 'page' : undefined);
+  const back = current && !['home', 'login'].includes(current) ? '?next=/' + current : '';
 
   return (
-    <header className='k-head'>
+    <header className='k-head' data-k-head>
       <div className='k-wrap k-head-in'>
-        <Link className='k-brand' href='/'>
+        <Link className='k-brand' href='/' aria-label='Stash, home'>
           <DrawerMark />
           stash
         </Link>
         <nav className='k-nav' id='k-nav' aria-label='Main'>
           <Link href='/explore' aria-current={here('explore')}>Explore</Link>
-          {viewer ? <Link href='/explore?saved=1' aria-current={here('saved')}>Saved</Link> : null}
-          {viewer ? (
-            <Link href='/assistant' aria-current={here('assistant')}>
-              Assistant{viewer.isPro ? null : <span className='k-pro'>Pro</span>}
-            </Link>
-          ) : null}
+          <Link href='/#categories'>Categories</Link>
+          <Link href='/#how-it-works'>How it works</Link>
           <Link href='/pricing' aria-current={here('pricing')}>Pricing</Link>
           {viewer?.isAdmin ? <Link href='/admin' aria-current={here('admin')}>Curate</Link> : null}
+          <Link className='k-nav-cta' href='/connect' aria-current={here('connect')}>Connect your agent</Link>
+          {viewer ? null : <Link className='k-nav-signin' href={'/login' + back}>Sign in</Link>}
         </nav>
         <span className='k-head-sp' />
+        <Link className='k-btn k-btn-accent k-btn-sm k-head-cta' href='/connect'>Connect your agent</Link>
         {viewer ? (
-          <Link className='k-avatar' href='/account' aria-label='Account and MCP connection' title={viewer.email}>
-            {viewer.avatar ? (
-              <img className='k-avatar' src={viewer.avatar} alt='' referrerPolicy='no-referrer' />
-            ) : (
-              (viewer.name || '?').slice(0, 1).toUpperCase()
-            )}
-          </Link>
+          <AccountMenu
+            viewer={{ name: viewer.name, email: viewer.email, avatar: viewer.avatar, isAdmin: viewer.isAdmin, isPro: viewer.isPro }}
+          />
         ) : (
-          <Link className='k-btn k-btn-sm' href={'/login' + (current ? '?next=/' + (current === 'home' ? '' : current) : '')}>
-            Sign in
-          </Link>
+          <Link className='k-btn k-btn-sm k-head-signin' href={'/login' + back}>Sign in</Link>
         )}
         <MenuToggle />
       </div>

@@ -1,173 +1,214 @@
 import Link from 'next/link';
-import { db } from '@/lib/supabase';
 import { getViewer } from '@/lib/auth';
-import { TOOLKITS, toolkitFor } from '@/lib/taxonomy';
-import { TYPE_LABELS } from '@/lib/catalog';
+import { policyFor } from '@/lib/access';
+import { browse, overview, demoSearch } from '@/lib/browse';
+import { connectionOf } from '@/lib/mcpkeys';
+import { TYPE_LABELS } from '@/lib/labels';
+import { PRO } from '@/lib/plans';
 import SiteHeader from './_ui/SiteHeader';
 import SiteFooter from './_ui/SiteFooter';
-import AgentDemo from './_ui/AgentDemo';
-import { CheckIcon } from './_ui/icons';
+import EntryCard from './_ui/EntryCard';
+import CodeBox from './_ui/CodeBox';
+import TrackedLink from './_ui/TrackedLink';
+import { ArrowIcon, LockIcon, SparkIcon } from './_ui/icons';
+import { PLACEHOLDER_KEY } from './_ui/agents';
+import AgentProvider from './_landing/AgentProvider';
+import AgentOrbit from './_landing/AgentOrbit';
+import McpScrollDemo from './_landing/McpScrollDemo';
+import AgentEcosystem from './_landing/AgentEcosystem';
+import CategoryArt from './_landing/CategoryArt';
+import ConnectButton from './_landing/ConnectButton';
+import ConnectPrompt from './_landing/ConnectPrompt';
+import Peeker from './_landing/Peeker';
+import './landing.css';
 
 export const dynamic = 'force-dynamic';
 
-// Real entries for the hero exchange, so the demo shows the catalogue as it is.
-const DEMO_IDS = [187, 233, 17];
+// What the demo's agent asks Stash. It has to be answerable from the visitor
+// sample, since the demo only ever shows entries anyone can open.
+const DEMO_QUERY = 'build a polished landing page';
+// The three toolkits the brief leads with come first; the bento gives them the most room.
+const TILE_ORDER = ['ui-ux', 'content', 'automation', 'development', 'research'];
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://stashkit.vercel.app';
 
-const firstClause = (s, max = 78) => {
-  const t = String(s || '').split(/(?<=[.;])\s/)[0];
-  if (t.length <= max) return t.replace(/[.;]$/, '');
-  return t.slice(0, t.lastIndexOf(' ', max)) + '…';
-};
+/** What a toolkit tile says about access, true for whoever is looking. */
+function accessLine(t, level) {
+  if (t.needs) return 'Unlock with ' + PRO.name;
+  const shut = t.count - t.open;
+  if (!shut) return level === 'visitor' ? 'All public' : 'All open to you';
+  return level === 'visitor' ? t.open + ' public, ' + shut + ' for members' : t.open + ' open to you, ' + shut + ' with ' + PRO.name;
+}
 
-async function load() {
-  const [{ data: rows }, { data: demo }] = await Promise.all([
-    db.from('links').select('category,is_premium').eq('dead', false),
-    db.from('links').select('id,title,summary,type,install').in('id', DEMO_IDS),
+/** Each block degrades on its own: a failed query hides its section, never the page. */
+const settle = (p, fallback) => p.catch(() => fallback);
+
+async function load(viewer) {
+  const policy = await policyFor(viewer);
+  const [counts, featured, recent, demo, connection] = await Promise.all([
+    settle(overview(policy), null),
+    settle(browse(policy, { featured: true, limit: 11 }), { items: [] }),
+    settle(browse(policy, { sort: 'newest', limit: 14 }), { items: [] }),
+    settle(demoSearch(DEMO_QUERY, 3), []),
+    viewer ? settle(connectionOf(viewer.id), null) : null,
   ]);
-
-  const toolkits = TOOLKITS.map((t) => ({ ...t, count: 0, premium: 0 }));
-  const byKey = new Map(toolkits.map((t) => [t.key, t]));
-  for (const r of rows || []) {
-    const t = byKey.get(toolkitFor(r.category));
-    t.count += 1;
-    if (r.is_premium) t.premium += 1;
-  }
-
-  const picks = DEMO_IDS.map((id) => (demo || []).find((d) => d.id === id))
-    .filter(Boolean)
-    .map((d) => ({ id: d.id, title: d.title, why: firstClause(d.summary), install: d.install, kind: TYPE_LABELS[d.type] || d.type }));
-
-  return { total: (rows || []).length, toolkits, picks };
+  const featuredIds = new Set(featured.items.map((i) => i.id));
+  return {
+    level: policy.level,
+    counts,
+    featured: featured.items,
+    recent: recent.items.filter((i) => !featuredIds.has(i.id)).slice(0, 8),
+    picks: demo.map((d) => ({ ...d, kind: TYPE_LABELS[d.type] || 'Tool' })),
+    connected: !!connection?.connected,
+  };
 }
 
 export default async function Home() {
-  const [{ total, toolkits, picks }, viewer] = await Promise.all([load(), getViewer().catch(() => null)]);
-  const connectHref = viewer ? '/account#connect' : '/login?next=' + encodeURIComponent('/account#connect');
+  const viewer = await getViewer().catch(() => null);
+  const { level, counts, featured, recent, picks, connected } = await load(viewer);
+  const signedIn = !!viewer;
+  const lead = featured.slice(0, 3);
+  const rest = featured.slice(3);
 
   return (
-    <div className='k'>
+    <div className='k k-home'>
       <SiteHeader current='home' />
-
-      <main>
-        <section className='k-hero'>
-          <div className='k-wrap k-hero-grid'>
-            <div className='k-hero-copy'>
-              <h1 className='k-h1'>Stop collecting tools. Start using the right ones.</h1>
-              <p className='k-lede'>
-                Stash is a hand-picked catalogue of {total} developer tools, MCP servers and agent skills. Connect it
-                to Claude, Cursor or Copilot once, and your agent checks it before reaching for anything else.
-              </p>
-              <div className='k-hero-cta'>
-                <Link className='k-btn k-btn-brass' href='/explore'>Browse the catalogue</Link>
-                <Link className='k-btn' href={connectHref}>Connect your agent</Link>
+      <main id='main'>
+        <AgentProvider>
+          {/* ------------------------------------------------ hero */}
+          <section className='k-hero' aria-labelledby='hero-h'>
+            <div className='k-hero-glow' aria-hidden='true' />
+            <div className='k-wrap k-hero-grid'>
+              <div className='k-hero-copy'>
+                <span className='k-eyebrow'>Discovery for coding agents</span>
+                <h1 id='hero-h' className='k-h1'>
+                  Find the right tools for what you&apos;re <em className='k-hl'>building.</em>
+                </h1>
+                <p className='k-lede'>
+                  Stash connects your AI coding agent to a curated library of skills, plugins, MCP servers and developer
+                  tools. Describe your task. Discover what fits. Build with confidence.
+                </p>
+                <div className='k-hero-cta'>
+                  <TrackedLink className='k-btn k-btn-primary k-btn-lg' href='/explore' event='hero_primary_cta_click'>Explore Stash</TrackedLink>
+                  <a className='k-btn k-btn-lg' href='#how-it-works'>See how it works</a>
+                </div>
+                <p className='k-hero-note'>
+                  Works with Claude Code, Cursor, GitHub Copilot and compatible MCP clients.
+                  {counts ? <> <span className='k-hero-count'>{counts.total} hand-picked entries.</span></> : null}
+                </p>
               </div>
-              <p className='k-hero-note'>Free to browse. Sign in with Google to unlock every entry and get your MCP key.</p>
+              <AgentOrbit picks={picks.map((p) => ({ id: p.id, title: p.title, kind: p.kind }))} />
             </div>
-            {picks.length ? (
-              <AgentDemo
-                prompt='Add smooth scroll animations to my landing page.'
-                query='scroll animations for a landing page'
-                picks={picks}
-                reply={picks[0].title + ' fits best here: it is open source and works with React. I will install it and add a reveal to the hero section.'}
-              />
-            ) : null}
-          </div>
-        </section>
+          </section>
 
-        <section className='k-section'>
-          <div className='k-wrap'>
-            <div className='k-section-head'>
-              <h2 className='k-h2'>How it works</h2>
-              <p className='k-lede'>Your agent stops guessing from the open internet and starts from tools someone has already vetted.</p>
-            </div>
-            <ol className='k-steps'>
-              <li>
-                <h3 className='k-h3'>Connect once</h3>
-                <p>Create a key in your account and paste one line into Claude, Claude Code, Cursor, VS Code or Windsurf.</p>
-              </li>
-              <li>
-                <h3 className='k-h3'>Describe the task</h3>
-                <p>Ask for what you are building, not for a product name. Stash searches by meaning, so a calmer onboarding flow finds the right tour library.</p>
-              </li>
-              <li>
-                <h3 className='k-h3'>Choose, then build</h3>
-                <p>You get ranked picks with install steps, what each one needs and when to skip it. Nothing is installed until you say so.</p>
-              </li>
-            </ol>
-          </div>
-        </section>
+          {/* ------------------------------------------------ demo */}
+          <McpScrollDemo picks={picks} query={DEMO_QUERY} />
 
-        <section className='k-section'>
-          <div className='k-wrap'>
-            <div className='k-section-head'>
-              <h2 className='k-h2'>Five toolkits, one catalogue</h2>
-              <p className='k-lede'>
-                Libraries, MCP servers, skills, apps and references, filed by the job they do. Members-only entries
-                open when you sign in.
-              </p>
-            </div>
-            <div className='k-drawers'>
-              {toolkits.map((t) => (
-                <Link key={t.key} className='k-drawer' href={'/explore?toolkit=' + t.key}>
-                  <span className='k-drawer-name'>{t.label}</span>
-                  <span className='k-drawer-blurb'>{t.blurb}</span>
-                  <span className='k-drawer-count'>
-                    <b>{t.count}</b>
-                    {t.premium ? t.premium + ' members-only' : 'all public'}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
+          {/* ------------------------------------------------ agents */}
+          <AgentEcosystem />
 
-        <section className='k-section'>
-          <div className='k-wrap k-split'>
-            <div className='k-section-head' style={{ marginBottom: 0 }}>
-              <h2 className='k-h2'>Works where you already work</h2>
-              <p className='k-lede'>
-                Stash speaks MCP, so any client that can add a remote server can use it. Your account page has the
-                exact setup for each one, with your key already filled in.
-              </p>
-              <div><Link className='k-btn' href={connectHref}>Get your MCP key</Link></div>
-            </div>
-            <div className='k-clients' aria-label='Supported clients'>
-              {['Claude', 'Claude Code', 'Cursor', 'VS Code with Copilot', 'Windsurf', 'Any MCP client'].map((c) => (
-                <span key={c} className='k-client'>{c}</span>
-              ))}
-            </div>
-          </div>
-        </section>
+          {/* ------------------------------------------------ featured */}
+          {featured.length || recent.length ? (
+            <section className='k-section k-feat' id='featured' aria-labelledby='feat-h'>
+              <div className='k-wrap'>
+                <div className='k-section-head-row'>
+                  <div className='k-section-head'>
+                    <span className='k-eyebrow'>{featured.length ? 'Featured by the curator' : 'From the catalogue'}</span>
+                    <h2 id='feat-h' className='k-h2'>A better starting point for your next build.</h2>
+                    <p className='k-lede'>Explore useful skills, plugins and tools selected from the Stash catalogue.</p>
+                  </div>
+                  <Link className='k-arrow' href='/explore'>Explore all skills and plugins <ArrowIcon /></Link>
+                </div>
 
-        <section className='k-section'>
-          <div className='k-wrap'>
-            <div className='k-section-head'>
-              <h2 className='k-h2'>Free to use, a dollar for the AI</h2>
-              <p className='k-lede'>Discovery is free for every member. Pro adds the recommendations that cost us a model call.</p>
-            </div>
-            <div className='k-plans'>
-              <div className='k-plan'>
-                <h3 className='k-h3'>Free</h3>
-                <ul>
-                  <li><CheckIcon /><span>The whole catalogue, members-only entries included</span></li>
-                  <li><CheckIcon /><span>Your saved tools, in one place</span></li>
-                  <li><CheckIcon /><span>MCP search, details and install steps in your agent</span></li>
-                </ul>
+                {lead.length ? (
+                  <div className='k-feat-lead'>
+                    <Peeker agent='cursor' />
+                    {lead.map((item, i) => <EntryCard key={item.id} item={item} size='lg' eager={i === 0} />)}
+                  </div>
+                ) : null}
+                {rest.length ? (
+                  <div className='k-grid k-feat-rest'>
+                    {rest.map((item) => <EntryCard key={item.id} item={item} />)}
+                  </div>
+                ) : null}
+
+                {recent.length ? (
+                  <div className='k-feat-recent'>
+                    <div className='k-ex-label'>
+                      <h3 className='k-h3'>Recently added</h3>
+                      <Link className='k-arrow k-small' href='/explore?sort=newest'>See everything new <ArrowIcon size={14} /></Link>
+                    </div>
+                    <div className='k-ex-feature-row'>
+                      {recent.map((item) => <EntryCard key={item.id} item={item} size='sm' />)}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-              <div className='k-plan k-plan-pro'>
-                <h3 className='k-h3'>Pro, $1 a month</h3>
-                <ul>
-                  <li><CheckIcon /><span>Everything in Free</span></li>
-                  <li><CheckIcon /><span>AI recommendations in your agent: stacks, comparisons and project reviews</span></li>
-                  <li><CheckIcon /><span>The Stash assistant on the web</span></li>
-                </ul>
+            </section>
+          ) : null}
+
+          {/* ------------------------------------------------ categories */}
+          {counts ? (
+            <section className='k-section k-cats' id='categories' aria-labelledby='cats-h'>
+              <div className='k-wrap'>
+                <div className='k-section-head'>
+                  <span className='k-eyebrow'>Categories</span>
+                  <h2 id='cats-h' className='k-h2'>Explore by what you&apos;re trying to do.</h2>
+                  <p className='k-lede'>Five toolkits, filed by the job a tool does. Filter by kind, from MCP servers to templates, once you are inside.</p>
+                </div>
+                <div className='k-cat-grid'>
+                  {[...counts.toolkits].sort((a, b) => TILE_ORDER.indexOf(a.key) - TILE_ORDER.indexOf(b.key)).map((t) => (
+                    <Link
+                      key={t.key}
+                      href={t.needs ? '/upgrade?toolkit=' + t.key : '/explore?toolkit=' + t.key}
+                      className={'k-cat k-cat-' + t.key + (t.needs ? ' k-cat-locked' : '')}
+                      aria-label={t.label + (t.needs ? ', ' + PRO.name + ' only' : '') + ', ' + t.count + ' entries'}
+                    >
+                      <span className='k-cat-art'><CategoryArt toolkit={t.key} /></span>
+                      <span className='k-cat-body'>
+                        <span className='k-cat-top'>
+                          <b>{t.label}</b>
+                          {t.premium ? <span className='k-access k-access-premium'>{t.needs ? <LockIcon size={12} /> : <SparkIcon />}{PRO.name}</span> : null}
+                        </span>
+                        <span className='k-cat-blurb'>{t.needs ? t.pitch : t.blurb}</span>
+                        <span className='k-cat-foot'>
+                          <span>{t.count} entries</span>
+                          <span>{accessLine(t, level)}</span>
+                          <ArrowIcon />
+                        </span>
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {/* ------------------------------------------------ connect */}
+          <section className='k-section k-cta' aria-labelledby='cta-h'>
+            <div className='k-wrap'>
+              <div className='k-cta-card'>
+                <div className='k-cta-copy'>
+                  <span className='k-eyebrow'>Connect</span>
+                  <h2 id='cta-h' className='k-h2'>Your agent is one connection away.</h2>
+                  <p className='k-lede'>Connect Stash to your coding agent and discover tools directly from your workflow.</p>
+                  <div className='k-hero-cta'>
+                    <ConnectButton signedIn={signedIn} connected={connected} from='cta' className='k-btn k-btn-accent k-btn-lg' />
+                    <Link className='k-btn k-btn-lg' href='/connect'>See setup instructions</Link>
+                  </div>
+                  <p className='k-small k-dim' style={{ margin: 0 }}>Free with a Google sign-in. Your key is yours to revoke at any time.</p>
+                </div>
+                <div className='k-cta-code' aria-label='Example: the Claude Code setup command'>
+                  <span className='k-eyebrow'>Claude Code, one command</span>
+                  <CodeBox text={'claude mcp add --transport http stash ' + SITE + '/api/mcp \\\n  --header "Authorization: Bearer ' + PLACEHOLDER_KEY + '"'} />
+                  <span className='k-small k-dim'>Cursor, VS Code, Claude and Windsurf each get their own exact config in the guide.</span>
+                </div>
               </div>
             </div>
-            <p style={{ marginTop: 24 }}><Link className='k-link' href='/pricing'>Compare plans in detail</Link></p>
-          </div>
-        </section>
+          </section>
+
+          <ConnectPrompt signedIn={signedIn} connected={connected} />
+        </AgentProvider>
       </main>
-
       <SiteFooter />
     </div>
   );

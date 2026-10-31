@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import { db, shape } from '@/lib/supabase';
 import { embed } from '@/lib/embed';
 import { normalizeUrl } from '@/lib/util';
-import { inferSource, STAGES } from '@/lib/taxonomy';
+import { inferSource, STAGES, TOOLKITS, toolkitFor } from '@/lib/taxonomy';
+import { premiumToolkits, tierOf } from '@/lib/access';
 import { requireAdmin } from '@/lib/auth';
-import { newEntriesPremium } from '@/lib/settings';
+import { newEntryAccess } from '@/lib/settings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,13 +32,20 @@ export async function GET(req) {
 
   // Console views the RPC has no parameter for. Same over-fetch approach as
   // stages: the catalogue is a few hundred rows, so this stays cheap.
-  const premium = p.get('premium'); // '1' members only, '0' public
+  //
+  // Tier views go by the tier an entry effectively has, so an entry stored as
+  // public inside a Premium toolkit counts as Premium, exactly as members see it.
+  // `collection` is the Free collection: everything a Free member can open.
   const attention = p.get('attention') === '1'; // failed, still reading, or broken
+  const tier = ['public', 'free', 'premium', 'collection'].includes(p.get('access')) ? p.get('access') : null;
+  const toolkit = TOOLKITS.find((t) => t.key === p.get('toolkit'))?.key || null;
+  const locks = { premiumToolkits: tier ? await premiumToolkits() : [] };
   const keep = (r) =>
     (!stage || stage.categories.includes(r.category)) &&
-    (premium == null || !!r.is_premium === (premium === '1')) &&
+    (!toolkit || toolkitFor(r.category) === toolkit) &&
+    (!tier || (tier === 'collection' ? !r.dead && tierOf(r, locks) !== 'premium' : tierOf(r, locks) === tier)) &&
     (!attention || r.dead || r.status === 'error' || r.status === 'pending' || r.status === 'enriching');
-  const postFilter = !!(stage || premium != null || attention);
+  const postFilter = !!(stage || attention || tier || toolkit);
 
   const { data, error } = await db.rpc('search_links', {
     q: q || null,
@@ -59,6 +67,8 @@ export async function GET(req) {
     f_section: p.get('section') || null,
     f_style: p.get('style') || null,
     f_effect: p.get('effect') || null,
+    // Curators see every tier; these only narrow the console's views.
+    f_featured: p.get('featured') === '1',
     sort_by: p.get('sort') || 'newest',
     max_rows: postFilter ? 2000 : limit,
     skip_rows: postFilter ? 0 : offset,
@@ -116,7 +126,7 @@ export async function POST(req) {
       source: body.source || inferSource(norm),
       tags: Array.isArray(body.tags) ? body.tags : [],
       status: 'pending',
-      is_premium: await newEntriesPremium(),
+      ...(await newEntryAccess()),
     })
     .select('*')
     .single();

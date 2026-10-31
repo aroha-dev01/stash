@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { track } from '@vercel/analytics/server';
 import { authClient, safeNext } from '@/lib/auth';
 
 export const runtime = 'nodejs';
@@ -14,8 +15,16 @@ export async function GET(req) {
   let res;
   if (code) {
     const sb = await authClient();
-    const { error } = await sb.auth.exchangeCodeForSession(code);
-    if (!error) res = NextResponse.redirect(new URL(next, req.url));
+    const { data, error } = await sb.auth.exchangeCodeForSession(code);
+    if (!error) {
+      // A brand-new member lands on a short welcome rather than a blank page.
+      const created = Date.parse(data?.user?.created_at || '');
+      const isNew = Date.now() - created < 10 * 60 * 1000;
+      const to = new URL(next, req.url);
+      if (isNew) to.searchParams.set('welcome', '1');
+      await track('google_sign_in_completed', { new_member: isNew }, { request: req }).catch(() => {});
+      res = NextResponse.redirect(to);
+    }
   }
   if (!res) {
     const why = p.get('error_description') || 'Sign-in did not complete. Try again.';

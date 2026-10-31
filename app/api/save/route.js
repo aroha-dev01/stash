@@ -4,7 +4,7 @@ import { enrichLink } from '@/lib/enrich';
 import { normalizeUrl } from '@/lib/util';
 import { inferSource } from '@/lib/taxonomy';
 import { resolveKey } from '@/lib/mcpkeys';
-import { getSetting, newEntriesPremium } from '@/lib/settings';
+import { getSetting, newEntryAccess } from '@/lib/settings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -52,7 +52,7 @@ async function save(rawUrl, note, source) {
       source: source || inferSource(norm),
       tags: [],
       status: 'pending',
-      is_premium: await newEntriesPremium(),
+      ...(await newEntryAccess()),
     })
     .select('*')
     .single();

@@ -36,7 +36,8 @@ instead, which is how new members once landed on an old deployment.
 
 Schema changes are versioned in `supabase/migrations` and applied in order.
 New users get a `profiles` row automatically. Give someone Pro or the curator
-role from `/admin`, Members. The first curator has to be set in SQL:
+role from `/admin`, Members. Pro is a plan and curator is a role: neither
+implies the other. The first curator has to be set in SQL:
 
 ```sql
 update public.profiles set is_admin = true, plan = 'pro' where email = '...';
@@ -50,3 +51,25 @@ is connected. `/api/save` answers to a curator's shortcut key
 (`Authorization: Bearer ios_stash_...`) while the switch is on, and to
 `STASH_TOKEN` for scripts. Everyone else gets a 404. Shortcut keys can only
 save links; they never open the MCP server.
+
+## Access tiers and featured entries
+
+`20261031000004_access_tiers` adds `links.access` (`public`, `free`,
+`premium`) and `links.featured`. `20261031000005_free_collection` curates the
+Free collection deterministically (see the migration for the ranking): 15
+public entries are the signed-out sample, 35 more are for members, the rest
+are Premium, and UI/UX Development, Content Creation and Automation are
+Premium toolkits. Curators adjust any entry in `/admin`, Catalogue (the Free
+collection view shows the count against its target of 50) and toolkits in
+`/admin`, Settings. New entries start as Premium.
+`links.is_premium` is the old "members only" flag: it is still written in step
+with `access` so an older deployment keeps working, and can be dropped once
+every deployment reads `access`.
+
+## Analytics
+
+The site sends a few named funnel events (`landing_view` is the page view;
+`explore_opened`, `search_submitted`, `connect_cta_clicked`, `config_copied`,
+`mcp_connection_verified` and so on) through Vercel Web Analytics. Turn Web
+Analytics on for the project in the Vercel dashboard; custom events need a plan
+that includes them. Events never carry keys, search text or anything typed.

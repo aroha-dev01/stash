@@ -1,20 +1,40 @@
-import { Bricolage_Grotesque, IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google';
+import { Archivo, IBM_Plex_Mono } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
 import './site.css';
 
-const display = Bricolage_Grotesque({ subsets: ['latin'], variable: '--font-display', display: 'swap' });
-const body = IBM_Plex_Sans({ subsets: ['latin'], weight: ['400', '500', '600'], variable: '--font-body', display: 'swap' });
-const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-mono', display: 'swap' });
+// One family: Archivo, Aruo's own typeface, for headings, body, navigation and
+// labels, as a variable font so every weight used (400 to 650) is real, with
+// its true italic for the hero's one highlighted word. IBM Plex Mono only for
+// code and terminal text. next/font self-hosts both and sizes the fallback to
+// match, so swapping in the web font does not shift the layout.
+const sans = Archivo({ subsets: ['latin'], style: ['normal', 'italic'], variable: '--font-archivo', display: 'swap' });
+const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-plex-mono', display: 'swap' });
+
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://stashkit.vercel.app';
+const DESCRIPTION =
+  'Describe what you are building and Stash helps your AI agent find the right skills, plugins, MCP servers and developer tools. Works with Claude Code, Cursor and GitHub Copilot.';
 
 export const metadata = {
-  title: { default: 'Stash: the right tools for every task', template: '%s | Stash' },
-  description:
-    'A hand-picked catalogue of developer tools, MCP servers and agent skills. Connect it to Claude, Cursor or Copilot once, and your agent picks the right tool for the job.',
+  metadataBase: new URL(SITE),
+  title: { default: 'Stash: the right tools for what you are building', template: '%s | Stash' },
+  description: DESCRIPTION,
+  applicationName: 'Stash',
   manifest: '/manifest.webmanifest',
-  icons: { icon: '/icon.svg' },
+  icons: { icon: '/icon.svg', apple: '/icon-180.png' },
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    siteName: 'Stash',
+    title: 'Stash: the right tools for what you are building',
+    description: DESCRIPTION,
+    url: '/',
+    images: [{ url: '/icon-512.png', width: 512, height: 512, alt: 'Stash' }],
+  },
+  twitter: { card: 'summary', title: 'Stash', description: DESCRIPTION },
 };
 
 export const viewport = {
-  themeColor: '#11141f',
+  themeColor: '#070707',
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
@@ -22,8 +42,12 @@ export const viewport = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang='en' className={`${display.variable} ${body.variable} ${mono.variable}`}>
-      <body>{children}</body>
+    <html lang='en' className={`${sans.variable} ${mono.variable}`}>
+      <body>
+        {children}
+        {/* /_vercel/insights only exists on Vercel deployments. */}
+        {process.env.VERCEL ? <Analytics /> : null}
+      </body>
     </html>
   );
 }

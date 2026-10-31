@@ -6,7 +6,7 @@ import { newKey, MAX_ACTIVE_KEYS } from '@/lib/mcpkeys';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const COLUMNS = 'id,name,prefix,created_at,last_used_at';
+const COLUMNS = 'id,name,prefix,created_at,last_used_at,last_client';
 
 export async function GET() {
   const { viewer, error } = await requireViewer();

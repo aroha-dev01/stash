@@ -1,26 +1,56 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CATEGORIES, PRICING } from '@/lib/taxonomy';
-import { TYPE_LABELS } from '@/lib/catalog';
-import { CloseIcon, LockIcon, SearchIcon } from '../_ui/icons';
+import { CATEGORIES, PRICING, TOOLKITS, toolkitFor } from '@/lib/taxonomy';
+import { TYPE_LABELS } from '@/lib/labels';
+import { PRO } from '@/lib/plans';
+import { CloseIcon, SearchIcon } from '../_ui/icons';
+import AccessBadge from '../_ui/AccessBadge';
 import { State, Toggle, ago, api, date } from './ui';
 
+// Every view is the whole catalogue, curators included: nothing here is
+// filtered by the curator's own plan. Tier views go by the tier an entry
+// effectively has, Premium toolkits included.
 const VIEWS = [
   ['all', 'All'],
-  ['premium', 'Members only'],
-  ['public', 'Public'],
+  ['collection', 'Free collection'],
+  ['public', 'Visitor sample'],
+  ['free', 'Members'],
+  ['premium', PRO.name],
+  ['featured', 'Featured'],
   ['attention', 'Needs a look'],
   ['starred', 'Starred'],
 ];
 const VIEW_PARAMS = {
   all: {},
-  premium: { premium: '1' },
-  public: { premium: '0' },
+  collection: { access: 'collection' },
+  public: { access: 'public' },
+  free: { access: 'free' },
+  premium: { access: 'premium' },
+  featured: { featured: '1' },
   attention: { attention: '1' },
   starred: { starred: '1' },
 };
+
+// Who may open an entry. The tier names are lib/access.js's; the words are what members read.
+const ACCESS = [
+  ['public', 'Visitor sample', 'Anyone can open it, signed out included. Part of the Free collection.'],
+  ['free', 'Members', 'Part of the Free collection: any signed-in member. Signed-out visitors never see it.'],
+  ['premium', PRO.name, 'Only members on ' + PRO.name + ', and curators. Agents on Free never see it either.'],
+];
 const PAGE = 40;
+
+/** The tier an entry effectively has, and who it is hidden from, in words. */
+function visibility(l, locked) {
+  const kit = TOOLKITS.find((t) => t.key === toolkitFor(l.category));
+  if (l.dead) return { tier: l.access, why: 'Hidden from everyone: the link is broken.' };
+  if (locked.includes(kit?.key)) {
+    return { tier: 'premium', why: 'Hidden from Free and visitors: ' + kit.label + ' is a ' + PRO.name + ' toolkit.' };
+  }
+  if (l.access === 'premium') return { tier: 'premium', why: 'Hidden from Free and visitors: a ' + PRO.name + ' entry.' };
+  if (l.access === 'free') return { tier: 'free', why: 'Hidden from signed-out visitors. In the Free collection.' };
+  return { tier: 'public', why: 'Open to everyone. In the visitor sample and the Free collection.' };
+}
 
 const initials = (t) => String(t || '?').replace(/[^A-Za-z0-9]/g, '').slice(0, 2) || '?';
 
@@ -56,19 +86,31 @@ export default function Catalogue({ initialView, onChanged, toast }) {
   const [busyAdd, setBusyAdd] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulk, setBulk] = useState('');
+  const [toolkit, setToolkit] = useState('');
+  const [type, setType] = useState('');
+  const [locks, setLocks] = useState({ premium_toolkits: [], free_target: null });
+  const [levels, setLevels] = useState(null);
   const seq = useRef(0);
+
+  const loadCounts = useCallback(() => {
+    api('/api/admin/settings').then((j) => setLocks(j.catalogue), () => {});
+    api('/api/catalog/overview').then((j) => setLevels(j.levels), () => {});
+  }, []);
+  useEffect(() => { loadCounts(); }, [loadCounts]);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(input.trim()), 280);
     return () => clearTimeout(t);
   }, [input]);
 
-  useEffect(() => { setLimit(PAGE); }, [q, view, sort]);
+  useEffect(() => { setLimit(PAGE); }, [q, view, sort, toolkit, type]);
 
   const load = useCallback(async () => {
     const n = ++seq.current;
     const p = new URLSearchParams({ sort, limit: String(limit), ...VIEW_PARAMS[view] });
     if (q) p.set('q', q);
+    if (toolkit) p.set('toolkit', toolkit);
+    if (type) p.set('type', type);
     try {
       const j = await api('/api/links?' + p);
       if (n !== seq.current) return;
@@ -78,7 +120,7 @@ export default function Catalogue({ initialView, onChanged, toast }) {
     } catch (e) {
       if (n === seq.current) setError(e.message);
     }
-  }, [q, view, sort, limit]);
+  }, [q, view, sort, limit, toolkit, type]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -137,7 +179,14 @@ export default function Catalogue({ initialView, onChanged, toast }) {
     <section className='k-con-sec' aria-labelledby='cat-h'>
       <div className='k-con-head'>
         <h1 id='cat-h' className='k-h2'>Catalogue</h1>
-        <p className='k-lede'>Add tools, correct what the AI wrote, and choose what stays members only.</p>
+        <p className='k-lede'>Every entry, whatever its tier. Add tools, correct what the AI wrote, and choose who can open each one.</p>
+        {levels ? (
+          <p className='k-small k-muted' style={{ margin: 0 }}>
+            Free collection: <b>{levels.free}</b>{locks.free_target ? ' of a ' + locks.free_target + ' target' : ''}.
+            {' '}Visitor sample: <b>{levels.visitor}</b>. {PRO.name} only: <b>{levels.premium - levels.free}</b>.
+            {' '}{PRO.name} toolkits: {locks.premium_toolkits?.length ? TOOLKITS.filter((t) => locks.premium_toolkits.includes(t.key)).map((t) => t.label).join(', ') : 'none'}.
+          </p>
+        ) : null}
       </div>
 
       <div className='k-block k-block-tight'>
@@ -169,15 +218,28 @@ export default function Catalogue({ initialView, onChanged, toast }) {
           {VIEWS.map(([k, label]) => (
             <button key={k} type='button' className='k-chip' aria-pressed={view === k} onClick={() => setView(k)}>{label}</button>
           ))}
+          <label className='k-sr' htmlFor='cat-kit'>Toolkit</label>
+          <select id='cat-kit' className='k-select' value={toolkit} onChange={(e) => setToolkit(e.target.value)}>
+            <option value=''>Every toolkit</option>
+            {TOOLKITS.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+          </select>
+          <label className='k-sr' htmlFor='cat-type'>Kind</label>
+          <select id='cat-type' className='k-select' value={type} onChange={(e) => setType(e.target.value)}>
+            <option value=''>Every kind</option>
+            {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
           <label className='k-sr' htmlFor='cat-sort'>Sort</label>
-          <select id='cat-sort' value={sort} onChange={(e) => setSort(e.target.value)}>
+          <select id='cat-sort' className='k-select' value={sort} onChange={(e) => setSort(e.target.value)}>
             <option value='newest'>Newest</option>
             <option value='oldest'>Oldest</option>
             <option value='title'>A to Z</option>
             <option value='stars'>Most stars</option>
           </select>
         </div>
-        <p className='k-count'>{items === null ? 'Loading' : total + (total === 1 ? ' entry' : ' entries')}</p>
+        <p className='k-count' aria-live='polite'>
+          {items === null ? 'Loading' : items.length < total ? 'Showing ' + items.length + ' of ' + total + ' entries' : total + (total === 1 ? ' entry' : ' entries')}
+          {items && view === 'all' && !q ? ', broken links included' : ''}
+        </p>
 
         {error ? (
           <div className='k-alert'>
@@ -193,6 +255,7 @@ export default function Catalogue({ initialView, onChanged, toast }) {
           <ul className='k-list'>
             {(items || []).map((l) => {
               const st = statusOf(l);
+              const vis = visibility(l, locks.premium_toolkits || []);
               return (
                 <li key={l.id}>
                   <button type='button' className='k-row k-row-btn' aria-current={openId === l.id} onClick={() => setOpenId(l.id)}>
@@ -204,9 +267,11 @@ export default function Catalogue({ initialView, onChanged, toast }) {
                         {st ? <State tone={st[0]}>{st[1]}</State> : null}
                       </span>
                       <span className='k-row-sum'>{l.summary || l.description || l.url}</span>
+                      <span className='k-small k-dim' style={{ display: 'block', marginTop: 4 }}>{vis.why}</span>
                     </span>
                     <span className='k-row-side'>
-                      {l.is_premium ? <span className='k-lock'><LockIcon /> Members</span> : <span className='k-tag-free'>Public</span>}
+                      {l.featured ? <span className='k-small k-dim'>Featured</span> : null}
+                      <AccessBadge tier={vis.tier} />
                     </span>
                   </button>
                 </li>
@@ -217,7 +282,8 @@ export default function Catalogue({ initialView, onChanged, toast }) {
 
         {items && items.length < total ? (
           <div className='k-more'>
-            <button type='button' className='k-btn' onClick={() => setLimit((n) => n + PAGE)}>Show more</button>
+            <button type='button' className='k-btn' onClick={() => setLimit((n) => n + PAGE)}>Show {Math.min(PAGE, total - items.length)} more</button>
+            <button type='button' className='k-btn k-btn-quiet' onClick={() => setLimit(total)}>Show all {total}</button>
           </div>
         ) : null}
       </div>
@@ -226,7 +292,8 @@ export default function Catalogue({ initialView, onChanged, toast }) {
         <Editor
           id={openId}
           onClose={() => setOpenId(null)}
-          onSaved={() => { load(); onChanged(); }}
+          locks={locks.premium_toolkits || []}
+          onSaved={() => { load(); loadCounts(); onChanged(); }}
           toast={toast}
         />
       ) : null}
@@ -234,7 +301,7 @@ export default function Catalogue({ initialView, onChanged, toast }) {
   );
 }
 
-function Editor({ id, onClose, onSaved, toast }) {
+function Editor({ id, locks, onClose, onSaved, toast }) {
   const [link, setLink] = useState(null);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -254,7 +321,8 @@ function Editor({ id, onClose, onSaved, toast }) {
         pricing: l.pricing || 'unknown',
         tags: (l.tags || []).join(', '),
         note: l.note || '',
-        is_premium: !!l.is_premium,
+        access: l.access || 'public',
+        featured: !!l.featured,
         starred: !!l.starred,
         is_open_source: !!l.is_open_source,
       });
@@ -347,12 +415,24 @@ function Editor({ id, onClose, onSaved, toast }) {
               </div>
             ) : null}
 
+            <fieldset className='k-access-pick'>
+              <legend><b>Who can open it</b></legend>
+              {ACCESS.map(([tier, label, hint]) => (
+                <label key={tier} className='k-radio'>
+                  <input type='radio' name='access' value={tier} checked={form.access === tier} onChange={() => setForm({ ...form, access: tier })} />
+                  <span><b>{label}</b><span className='k-small k-dim'>{hint}</span></span>
+                </label>
+              ))}
+              <p className='k-small k-muted' style={{ margin: '4px 0 0' }}>
+                Right now: {visibility({ ...link, ...form }, locks).why}
+              </p>
+            </fieldset>
             <div className='k-setting'>
               <div>
-                <b>Members only</b>
-                <span className='k-small k-dim'>Signed-out visitors see the name and a lock, not the details.</span>
+                <b>Featured</b>
+                <span className='k-small k-dim'>Shown on the homepage and at the top of Explore, to whoever can open it.</span>
               </div>
-              <Toggle on={form.is_premium} label='Members only' onChange={(v) => setForm({ ...form, is_premium: v })} />
+              <Toggle on={form.featured} label='Featured' onChange={(v) => setForm({ ...form, featured: v })} />
             </div>
             <div className='k-setting'>
               <div>

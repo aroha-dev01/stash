@@ -39,7 +39,7 @@ export async function GET() {
     count(db.from('profiles').select('id', { count: 'exact', head: true })),
     count(db.from('profiles').select('id', { count: 'exact', head: true }).eq('plan', 'pro')),
     count(db.from('profiles').select('id', { count: 'exact', head: true }).eq('is_admin', true)),
-    count(db.from('links').select('id', { count: 'exact', head: true }).eq('is_premium', true)),
+    count(db.from('links').select('id', { count: 'exact', head: true }).neq('access', 'public')),
     count(db.from('mcp_keys').select('id', { count: 'exact', head: true }).eq('kind', 'mcp').is('revoked_at', null)),
     db.from('links')
       .select('id,title,domain,status,dead,dead_reason,error,created_at')

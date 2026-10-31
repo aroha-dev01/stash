@@ -7,7 +7,9 @@ import { normalizeUrl } from '@/lib/util';
 import { inferSource, CATEGORIES, STAGES, stageFor, stageLabel, SECTIONS, STYLES, EFFECTS } from '@/lib/taxonomy';
 import { buildContext, SYSTEM } from '@/lib/context';
 import { chatJSON } from '@/lib/llm';
-import { resolveKey } from '@/lib/mcpkeys';
+import { resolveKey, noteClient } from '@/lib/mcpkeys';
+import { policyFor, rpcAccess, canOpen } from '@/lib/access';
+import { PRO, proLine } from '@/lib/plans';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +26,10 @@ export const maxDuration = 60;
 // a bearer header or ?key=. The key decides the plan: members get discovery,
 // Pro adds the AI tools, and only an admin (or STASH_TOKEN) can write to the
 // shared catalogue or see the owner's private notes and project names.
+//
+// Which entries a caller may see at all is lib/access.js, the same policy as
+// the website: every search passes rpcAccess(), and every lookup by id goes
+// through openOr(), so a locked entry cannot be reached from an agent either.
 
 const PROTOCOL = '2025-06-18';
 const SERVER = { name: 'stash', title: 'Stash', version: '3.0.0' };
@@ -33,6 +39,19 @@ const APP_URL = 'https://stashkit.vercel.app';
 // requests from one instance at once, so this must never be a module global.
 const caller = new AsyncLocalStorage();
 const isOwner = () => !!caller.getStore()?.admin;
+const policy = () => caller.getStore().policy;
+
+/** The row, if this caller may open it. Otherwise says what it takes, and nothing about the entry. */
+function openOr(row, id) {
+  if (!row) throw new Error('No saved tool with id ' + id);
+  if (!canOpen(row, policy())) {
+    throw new Error(
+      'Entry ' + id + ' is part of Stash ' + proLine() + '. Upgrade at ' + APP_URL + '/pricing to open it, ' +
+      'or carry on with the entries this plan includes.'
+    );
+  }
+  return row;
+}
 
 // AI-backed tools: each call spends a model request, so they are Pro.
 const PRO_TOOLS = new Set(['build_stack', 'compare_tools', 'review_project', 'ask_stash']);
@@ -64,11 +83,12 @@ function scrub(value) {
 async function listResources() {
   const { data } = await db
     .from('links')
-    .select('id,title,domain,summary,type,category')
-    .order('created_at', { ascending: false })
-    .limit(300);
+    .select('id,title,domain,summary,type,category,access')
+    .order('created_at', { ascending: false });
 
-  const links = (data || []).map((l) => ({
+  // Filter before capping, so a Free key lists its whole collection, not
+  // whatever of it happens to sit among the newest rows.
+  const links = (data || []).filter((l) => canOpen(l, policy())).slice(0, 300).map((l) => ({
     uri: 'stash://link/' + l.id,
     name: l.title || l.domain,
     title: l.title || l.domain,
@@ -117,7 +137,7 @@ function resourceTemplates() {
 
 async function readResource(uri) {
   if (uri === 'stash://index') {
-    const ctx = await buildContext('', { owner: isOwner() });
+    const ctx = await buildContext('', { owner: isOwner(), policy: policy() });
     return {
       contents: [{ uri, mimeType: 'text/markdown', text: ctx.text }],
     };
@@ -126,7 +146,7 @@ async function readResource(uri) {
   const link = uri.match(/^stash:\/\/link\/(\d+)$/);
   if (link) {
     const { data } = await db.from('links').select('*').eq('id', Number(link[1])).maybeSingle();
-    if (!data) throw new Error('No saved tool at ' + uri);
+    openOr(data, link[1]);
     return {
       contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(render(data), null, 2) }],
     };
@@ -277,7 +297,7 @@ async function authorise(req) {
 
   const member = await resolveKey(given);
   if (!member) return { ok: false };
-  return { ok: true, admin: member.isAdmin, pro: member.isPro, canWrite: member.isAdmin, userId: member.userId };
+  return { ok: true, admin: member.isAdmin, pro: member.isPro, canWrite: member.isAdmin, userId: member.userId, keyId: member.keyId };
 }
 
 /* ------------------------------------------------------------------ tools */
@@ -720,6 +740,7 @@ async function searchTools(args) {
     f_section: args.section || null,
     f_style: args.style || null,
     f_effect: args.effect || null,
+    ...rpcAccess(policy()),
     sort_by: 'newest',
     max_rows: stageCats ? Math.max(limit * 6, 60) : limit,
     skip_rows: 0,
@@ -749,8 +770,7 @@ async function howToUse(args) {
   if (!Number.isFinite(id)) throw new Error('id must be a number');
 
   const { data } = await db.from('links').select('*').eq('id', id).maybeSingle();
-  if (!data) throw new Error('No saved tool with id ' + id);
-  const l = shape(data);
+  const l = shape(openOr(data, id));
 
   const out = {
     id: l.id,
@@ -805,6 +825,7 @@ async function buildStack(args) {
     f_collection: args.collection || null,
     f_dead: false,
     f_works_with: null,
+    ...rpcAccess(policy()),
     sort_by: 'newest',
     max_rows: 30,
     skip_rows: 0,
@@ -906,7 +927,8 @@ async function compareTools(args) {
   if (Array.isArray(args.ids) && args.ids.length) {
     const ids = args.ids.map(Number).filter(Number.isFinite).slice(0, 6);
     const { data } = await db.from('links').select('*').in('id', ids);
-    rows = data || [];
+    // Locked ids drop out quietly; a comparison of what the caller can open is still honest.
+    rows = (data || []).filter((r) => canOpen(r, policy()));
   } else if (args.query) {
     const q = String(args.query);
     const q_embedding = await embed(q);
@@ -916,6 +938,7 @@ async function compareTools(args) {
       f_status: null, f_tags: null, f_oss: false, f_starred: false,
       f_collection: null, f_dead: false, f_works_with: null, f_type: null,
       f_language: null, f_min_stars: null, f_maintained: false, f_used_only: false,
+      ...rpcAccess(policy()),
       sort_by: 'newest', max_rows: 5, skip_rows: 0,
     });
     rows = data || [];
@@ -1022,6 +1045,7 @@ async function reviewProject(args) {
       f_status: null, f_tags: null, f_oss: false, f_starred: false,
       f_collection: null, f_dead: false, f_works_with: null, f_type: null,
       f_language: null, f_min_stars: null, f_maintained: false,
+      ...rpcAccess(policy()),
       sort_by: 'newest', max_rows: 14, skip_rows: 0,
     });
     for (const row of data || []) if (!seen.has(row.id)) seen.set(row.id, shape(row));
@@ -1118,8 +1142,8 @@ async function markUsed(args) {
   if (!Number.isFinite(id)) throw new Error('id must be a number');
   if (!project) throw new Error('project is required');
 
-  const { data: link } = await db.from('links').select('*').eq('id', id).maybeSingle();
-  if (!link) throw new Error('No saved tool with id ' + id);
+  const { data } = await db.from('links').select('*').eq('id', id).maybeSingle();
+  const link = openOr(data, id);
 
   const usedIn = [...new Set([...(link.used_in || []), project])];
   const collections = [...new Set([...(link.collections || []), project])];
@@ -1174,6 +1198,7 @@ async function findInspiration(args) {
       f_section: args.section || null,
       f_style: args.style || null,
       f_effect: null,
+      ...rpcAccess(policy()),
       sort_by: 'newest', max_rows: limit, skip_rows: 0,
     });
     out.push(...(data || []));
@@ -1210,7 +1235,7 @@ async function askStash(args) {
   const question = String(args.question || '').trim();
   if (!question) throw new Error('question is required');
 
-  const context = await buildContext(question, { owner: isOwner() });
+  const context = await buildContext(question, { owner: isOwner(), policy: policy() });
   const answer = await chatJSON(
     SYSTEM + '\n\nReturn strict JSON: { "answer": "your reply", "ids": [ids you referenced] }',
     context.text + '\n\nQuestion: ' + question
@@ -1231,8 +1256,7 @@ async function getTool(args) {
   if (!Number.isFinite(id)) throw new Error('id must be a number');
 
   const { data } = await db.from('links').select('*').eq('id', id).maybeSingle();
-  if (!data) throw new Error('No saved tool with id ' + id);
-  return render(data);
+  return render(openOr(data, id));
 }
 
 async function listCategories() {
@@ -1240,7 +1264,15 @@ async function listCategories() {
   if (error) throw new Error(error.message);
 
   const f = data || {};
+  const p = policy();
   return {
+    // Counts below cover the whole catalogue; searches return only what this plan opens.
+    your_plan:
+      p.level === 'admin' || p.level === 'premium'
+        ? 'Every entry and toolkit is open to this key.'
+        : 'This key opens the Free collection. Entries reserved for ' + PRO.name +
+          (p.lockedToolkits.length ? ', and the ' + p.lockedToolkits.join(', ') + ' toolkits,' : '') +
+          ' never appear in results. Upgrade at ' + APP_URL + '/pricing.',
     total_saved: f.stats?.total ?? 0,
     open_source: f.stats?.oss ?? 0,
     broken_links: f.stats?.dead ?? 0,
@@ -1318,7 +1350,7 @@ async function saveTool(args) {
 async function callTool(name, args, auth) {
   if (PRO_TOOLS.has(name) && !auth.pro) {
     throw new Error(
-      name + ' is part of Stash Pro ($1/month): AI recommendations built from the catalogue. ' +
+      name + ' is part of Stash ' + proLine() + ': AI recommendations built from the catalogue. ' +
       'Upgrade at ' + APP_URL + '/pricing. search_tools, get_tool, how_to_use and find_inspiration stay free.'
     );
   }
@@ -1339,6 +1371,8 @@ async function callTool(name, args, auth) {
       if (auth.admin) return markUsed(args);
       const id = Number(args.id);
       if (!Number.isFinite(id)) throw new Error('id must be a number');
+      const { data: row } = await db.from('links').select('id,category,access').eq('id', id).maybeSingle();
+      openOr(row, id);
       const { error } = await db.from('saves').upsert({ user_id: auth.userId, link_id: id }, { onConflict: 'user_id,link_id' });
       if (error) throw new Error(error.message);
       return { recorded: true, id, effect: 'Added to your saved tools on ' + APP_URL + '/explore?saved=1' };
@@ -1361,6 +1395,7 @@ async function handle(msg, auth) {
 
   switch (method) {
     case 'initialize':
+      noteClient(auth.keyId, params?.clientInfo);
       return ok(id, {
         protocolVersion: params?.protocolVersion || PROTOCOL,
         capabilities: {
@@ -1376,9 +1411,11 @@ async function handle(msg, auth) {
           'what it works with and when to avoid it, so it is a far better starting point than a fresh',
           'search of the open internet.',
           auth.pro
-            ? 'This member is on Pro: build_stack, compare_tools, review_project and ask_stash are available.'
-            : 'This member is on the free plan: build_stack, compare_tools, review_project and ask_stash are Pro ' +
-              'and will say so. search_tools, get_tool, how_to_use, list_categories and find_inspiration are free.',
+            ? 'This member is on ' + PRO.name + ': every entry, plus build_stack, compare_tools, review_project and ask_stash.'
+            : 'This member is on the free plan: build_stack, compare_tools, review_project and ask_stash are ' + PRO.name + ' ' +
+              'and will say so. search_tools, get_tool, how_to_use, list_categories and find_inspiration are free. ' +
+              'Free covers a curated collection of the catalogue; the rest is reserved for ' + PRO.name + ' and never appears in this member\'s results. If a search ' +
+              'comes back thin, say the free plan covers part of the catalogue rather than implying nothing exists.',
           '',
           'CHECK STASH AT THESE MOMENTS, without being asked:',
           '1. Starting work on any project — call review_project with what it is and what it uses. It returns',
@@ -1445,7 +1482,7 @@ async function handle(msg, auth) {
       // because saving the same URL twice returns the existing entry.
       const withHints = (t, write) => ({
         ...t,
-        description: PRO_TOOLS.has(t.name) && !auth.pro ? '[Stash Pro] ' + t.description : t.description,
+        description: PRO_TOOLS.has(t.name) && !auth.pro ? '[Stash ' + PRO.name + '] ' + t.description : t.description,
         annotations: {
           title: t.title,
           readOnlyHint: !write,
@@ -1516,7 +1553,7 @@ export async function POST(req) {
   const auth = await authorise(req);
   if (!auth.ok) {
     return NextResponse.json(
-      fail(null, -32001, 'Unauthorised: connect with your Stash key from ' + APP_URL + '/account'),
+      fail(null, -32001, 'Unauthorised: connect with your Stash key from ' + APP_URL + '/connect'),
       { status: 401, headers: { 'www-authenticate': 'Bearer realm="stash"' } }
     );
   }
@@ -1527,6 +1564,8 @@ export async function POST(req) {
   } catch {
     return NextResponse.json(fail(null, -32700, 'Parse error'), { status: 400 });
   }
+
+  auth.policy = await policyFor({ isAdmin: auth.admin, isPro: auth.pro });
 
   return caller.run(auth, async () => {
     // A client may batch several calls into one array.
@@ -1547,11 +1586,11 @@ export async function GET(req) {
     server: SERVER,
     protocol: PROTOCOL,
     transport: 'streamable-http (JSON-RPC over POST)',
-    auth: 'Authorization: Bearer <your Stash key>. Create a key at ' + origin + '/account',
+    auth: 'Authorization: Bearer <your Stash key>. Create a key at ' + origin + '/connect',
     capabilities: ['tools', 'resources', 'prompts', 'completions'],
     tools: READ_TOOLS.map((t) => t.name),
     pro_tools: [...PRO_TOOLS],
     prompts: PROMPTS.map((p) => p.name),
-    setup: origin + '/account#connect',
+    setup: origin + '/connect',
   });
 }

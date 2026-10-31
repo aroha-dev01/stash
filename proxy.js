@@ -11,11 +11,13 @@ import { createServerClient } from '@supabase/ssr';
 // This is the optimistic check only. Each route still resolves the user
 // itself (lib/auth.js currentUser) before touching anyone's data.
 
-// Reachable signed out: the public site and catalogue (premium entries come
-// back locked), sign-in itself, and endpoints that authenticate their own
-// callers (MCP keys, the hidden iOS endpoint, Vercel cron, backfills).
+// Reachable signed out: the public site and catalogue (lib/access.js decides
+// what each visitor may open), the setup guide, sign-in itself, and endpoints
+// that authenticate their own callers (MCP keys, the hidden iOS endpoint,
+// Vercel cron, backfills).
 const OPEN = [
-  /^\/$/, /^\/explore$/, /^\/pricing$/, /^\/login$/, /^\/auth\//,
+  /^\/$/, /^\/explore(\/|$)/, /^\/pricing$/, /^\/upgrade$/, /^\/connect$/, /^\/privacy$/, /^\/login$/, /^\/auth\//,
+  /^\/sitemap\.xml$/, /^\/robots\.txt$/,
   /^\/api\/catalog(\/|$)/,
   /^\/api\/mcp/, /^\/api\/save/, /^\/api\/cron\//, /^\/api\/backfill/,
 ];
@@ -65,6 +67,7 @@ export async function proxy(request) {
 }
 
 export const config = {
-  // Everything except static assets.
-  matcher: ['/((?!_next/static|_next/image|icon|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)'],
+  // Everything except static assets and Vercel's own /_vercel paths (the
+  // analytics script must never be answered with a sign-in redirect).
+  matcher: ['/((?!_next/static|_next/image|_vercel|icon|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)'],
 };

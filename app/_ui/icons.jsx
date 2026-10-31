@@ -63,3 +63,63 @@ export function GoogleIcon({ size = 18 }) {
     </svg>
   );
 }
+
+export function PlugIcon({ size = 24 }) {
+  // A generic connection, for "any MCP client". Not the MCP logo.
+  return (
+    <svg width={size} height={size} viewBox='0 0 24 24' fill='none' aria-hidden='true'>
+      <path d='M9 3v4M15 3v4M7 7h10v3a5 5 0 0 1-10 0V7zM12 15v6' stroke='currentColor' strokeWidth='1.8' strokeLinecap='round' strokeLinejoin='round' />
+    </svg>
+  );
+}
+
+export function ArrowIcon({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox='0 0 16 16' fill='none' aria-hidden='true'>
+      <path d='M3 8h10M9 4l4 4-4 4' stroke='currentColor' strokeWidth='1.6' strokeLinecap='round' strokeLinejoin='round' />
+    </svg>
+  );
+}
+
+export function ExternalIcon({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox='0 0 16 16' fill='none' aria-hidden='true'>
+      <path d='M6 3H3.5A.5.5 0 0 0 3 3.5v9a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5V10M9 3h4v4M13 3L7.5 8.5' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round' strokeLinejoin='round' />
+    </svg>
+  );
+}
+
+export function PersonIcon({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox='0 0 16 16' fill='none' aria-hidden='true'>
+      <circle cx='8' cy='5.5' r='2.6' stroke='currentColor' strokeWidth='1.5' />
+      <path d='M3 13.5c.8-2.4 2.7-3.6 5-3.6s4.2 1.2 5 3.6' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round' />
+    </svg>
+  );
+}
+
+export function SparkIcon({ size = 12 }) {
+  // Pro. A four-point spark, drawn, not an emoji.
+  return (
+    <svg width={size} height={size} viewBox='0 0 16 16' fill='none' aria-hidden='true'>
+      <path d='M8 1.5l1.6 4.9 4.9 1.6-4.9 1.6L8 14.5l-1.6-4.9L1.5 8l4.9-1.6L8 1.5z' fill='currentColor' />
+    </svg>
+  );
+}
+
+export function GlobeIcon({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox='0 0 16 16' fill='none' aria-hidden='true'>
+      <circle cx='8' cy='8' r='6' stroke='currentColor' strokeWidth='1.5' />
+      <path d='M2 8h12M8 2c1.8 1.7 2.6 3.7 2.6 6S9.8 12.3 8 14C6.2 12.3 5.4 10.3 5.4 8S6.2 3.7 8 2z' stroke='currentColor' strokeWidth='1.3' />
+    </svg>
+  );
+}
+
+export function ChevronIcon({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox='0 0 16 16' fill='none' aria-hidden='true'>
+      <path d='M4 6l4 4 4-4' stroke='currentColor' strokeWidth='1.6' strokeLinecap='round' strokeLinejoin='round' />
+    </svg>
+  );
+}

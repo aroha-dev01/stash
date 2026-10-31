@@ -1,5 +1,6 @@
 'use client';
 
+import { PRO } from '@/lib/plans';
 import { useCallback, useEffect, useState } from 'react';
 import { Toggle, ago, api, date } from './ui';
 
@@ -35,7 +36,7 @@ export default function Members({ me, onChanged, toast }) {
       <div className='k-con-head'>
         <h1 id='mem-h' className='k-h2'>Members</h1>
         <p className='k-lede'>
-          Everyone who has signed in. Until payments open, this is where you give someone Pro.
+          Everyone who has signed in. Until payments open, this is where you give someone {PRO.name}.
         </p>
       </div>
 
@@ -48,7 +49,7 @@ export default function Members({ me, onChanged, toast }) {
         <div className='k-block'>
           <div className='k-block-head k-block-row'>
             <span className='k-muted'>
-              {members ? members.length + ' members, ' + pro + ' on Pro' : 'Loading'}
+              {members ? members.length + ' members, ' + pro + ' on ' + PRO.name : 'Loading'}
             </span>
             <div className='k-field' style={{ flex: '0 1 320px' }}>
               <label className='k-sr' htmlFor='mem-q'>Find a member</label>
@@ -85,10 +86,10 @@ export default function Members({ me, onChanged, toast }) {
                     className='k-input k-input-sm'
                     value={m.plan}
                     disabled={busy === m.id}
-                    onChange={(e) => change(m, { plan: e.target.value }, (m.name || m.email) + ' is on ' + (e.target.value === 'pro' ? 'Pro' : 'Free') + ' now')}
+                    onChange={(e) => change(m, { plan: e.target.value }, (m.name || m.email) + ' is on ' + (e.target.value === 'pro' ? PRO.name : 'Free') + ' now')}
                   >
                     <option value='free'>Free</option>
-                    <option value='pro'>Pro</option>
+                    <option value='pro'>{PRO.name}</option>
                   </select>
                 </span>
 

@@ -17,8 +17,10 @@ export async function GET(_req, { params }) {
 
 const EDITABLE = [
   'title', 'summary', 'category', 'type', 'note', 'pricing', 'source',
-  'starred', 'is_open_source', 'url', 'tags', 'collections', 'dead', 'is_premium',
+  'starred', 'is_open_source', 'url', 'tags', 'collections', 'dead', 'access', 'featured',
 ];
+
+const TIERS = ['public', 'free', 'premium'];
 
 /** Collection names are matched exactly in queries, so they are normalised. */
 const cleanList = (v) => [
@@ -39,6 +41,12 @@ export async function PATCH(req, { params }) {
   // Collections keep their capitalisation - they are project names you read,
   // not machine tags.
   if (Array.isArray(patch.collections)) patch.collections = cleanList(patch.collections);
+  if ('access' in patch) {
+    if (!TIERS.includes(patch.access)) return NextResponse.json({ error: 'access must be public, free or premium' }, { status: 400 });
+    // Kept in step for the deployment that still reads is_premium.
+    patch.is_premium = patch.access !== 'public';
+  }
+  if ('featured' in patch) patch.featured = !!patch.featured;
 
   const { data, error } = await db.from('links').update(patch).eq('id', Number(id)).select('*').single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
