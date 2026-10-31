@@ -966,6 +966,11 @@ function MenuSheet({ meta, facets, onBulk, onShortcut, onClose }) {
       >
         <div><div>Retry everything that failed</div><small>{facets.stats.errored} item(s)</small></div>
       </button>
+      <form method='post' action='/auth/signout'>
+        <button className='menu-item' type='submit'>
+          <div><div>Sign out</div></div>
+        </button>
+      </form>
 
       <div className='status-line' style={{ marginTop: 16 }}>
         Summaries <b>{l.enabled ? l.provider + ' - ' + l.model : 'off - ' + (l.reason || '')}</b><br />
