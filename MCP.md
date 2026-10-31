@@ -3,7 +3,7 @@
 Once deployed, Stash speaks MCP at:
 
 ```
-https://stash-cyatra.vercel.app/api/mcp
+https://stashkit.vercel.app/api/mcp
 ```
 
 Check it in a browser first — a plain GET returns a health summary listing the
@@ -41,13 +41,13 @@ all, the server drops to read-only on its own and says so in its health check.
 ### To enable saving
 
 1. Invent a long random string.
-2. Vercel → stash-cyatra → Settings → Environment Variables → add
+2. Vercel → stashkit → Settings → Environment Variables → add
    `STASH_TOKEN` with that value.
 3. Redeploy (`npx vercel --prod`).
 4. Connect using the URL with the token appended:
 
    ```
-   https://stash-cyatra.vercel.app/api/mcp?token=YOUR_TOKEN
+   https://stashkit.vercel.app/api/mcp?token=YOUR_TOKEN
    ```
 
    A bearer header is also accepted, and is the better option wherever the

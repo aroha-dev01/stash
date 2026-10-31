@@ -1490,7 +1490,7 @@ export async function POST(req) {
 
 /** Plain GET is a health check, so you can eyeball it in a browser. */
 export async function GET(req) {
-  const origin = req?.nextUrl?.origin || 'https://stash-cyatra.vercel.app';
+  const origin = req?.nextUrl?.origin || 'https://stashkit.vercel.app';
   const url = origin + '/api/mcp';
 
   return NextResponse.json({

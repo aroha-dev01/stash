@@ -27,7 +27,7 @@ the exact address to paste into Shortcuts, with a Copy button.
 
 The Vercel connector I have been using can create a project but can **never
 deploy to it a second time**. That is why the URL kept changing and why you had
-to re-enter keys. Linking the folder to your existing `stash-cyatra` project
+to re-enter keys. Linking the folder to your existing `stashkit` project
 fixes that permanently: same URL, same environment variables, unlimited
 redeploys.
 
@@ -36,8 +36,8 @@ Open Terminal and paste this whole block:
 ```sh
 cd ~/Downloads/stash-v2        # or wherever you unzipped it
 npx vercel login               # pick the same login as cyberyatraa@gmail.com
-npx vercel link                # answer: Link to existing project? Y  →  stash-cyatra
-npx vercel --prod              # deploys to https://stash-cyatra.vercel.app
+npx vercel link                # answer: Link to existing project? Y  →  stashkit
+npx vercel --prod              # deploys to https://stashkit.vercel.app
 ```
 
 `vercel link` is the important step — it ties this folder to the project that
@@ -63,7 +63,7 @@ Twitter, Reddit, LinkedIn, Instagram, Safari.
 5. In its URL field, paste:
 
    ```
-   https://stash-cyatra.vercel.app/api/save?text=1&url=
+   https://stashkit.vercel.app/api/save?text=1&url=
    ```
 
 6. With the cursor still at the very end of that address, tap the **Shortcut
