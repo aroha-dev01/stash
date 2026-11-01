@@ -6,6 +6,9 @@ import { TOOLKITS } from '@/lib/taxonomy';
 import SiteHeader from '../_ui/SiteHeader';
 import SiteFooter from '../_ui/SiteFooter';
 import Explore from './explore';
+import SlowDown from '../_ui/SlowDown';
+import { headers } from 'next/headers';
+import { callerOf, waitFor } from '@/lib/guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +30,9 @@ export async function generateMetadata({ searchParams }) {
 export default async function ExplorePage({ searchParams }) {
   const sp = await searchParams;
   const viewer = await getViewer().catch(() => null);
+  // The first page renders here, so it shares the catalogue's pace with /api/catalog.
+  const wait = await waitFor('catalog', callerOf({ headers: await headers() }, viewer));
+  if (wait) return <SlowDown wait={wait} current='explore' />;
   const policy = await policyFor(viewer);
 
   const initial = {

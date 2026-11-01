@@ -16,6 +16,7 @@ the Supabase project **Stash** (`soynjbihrhcxyaimptjl`).
 | `GITHUB_TOKEN` | optional, higher GitHub rate limits for repo stats |
 | `CRON_SECRET` | optional, Vercel signs the nightly refresh with it |
 | `STASH_TOKEN` | optional owner token for scripts; never put it in a phone shortcut |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | optional, the Google OAuth client ID (public); switches on Google's own sign-in button, see below |
 
 For local work, copy `.env.example` to `.env.local`. Never put real keys in
 `.env.example`, which is committed.
@@ -31,6 +32,26 @@ Google is the only provider. Under Authentication, URL Configuration:
 
 If an address is missing, Supabase silently sends people to the Site URL
 instead, which is how new members once landed on an old deployment.
+
+### Google's sign-in button
+
+With `NEXT_PUBLIC_GOOGLE_CLIENT_ID` set, sign-in uses Google's own button
+(`app/_ui/GoogleButton.jsx`) and `signInWithIdToken`, so nobody passes through
+Supabase's callback and Google's screen names this site instead of
+`<project>.supabase.co`. To switch it on:
+
+1. Google Cloud Console, the OAuth web client Supabase uses: add every site
+   origin under **Authorized JavaScript origins**
+   (`https://stashkit.vercel.app`, `http://localhost:3000`, and any custom
+   domain).
+2. Supabase, Authentication, Providers, Google: the same client ID must be
+   the provider's client ID (or listed among its client IDs).
+3. Set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in Vercel and redeploy (it is read at
+   build time).
+
+Unset, or when Google's script cannot load, the site falls back to the
+redirect sign-in. Showing the name "Stash" instead of a domain still needs
+Google brand verification under Google Auth Platform, Branding.
 
 ## Database
 
@@ -73,3 +94,27 @@ The site sends a few named funnel events (`landing_view` is the page view;
 `mcp_connection_verified` and so on) through Vercel Web Analytics. Turn Web
 Analytics on for the project in the Vercel dashboard; custom events need a plan
 that includes them. Events never carry keys, search text or anything typed.
+
+## Keeping the catalogue from being copied
+
+`lib/guard.js` holds the rules. In short:
+
+- **Bots.** `/api/catalog`, `/api/catalog/[id]`, `/api/saves` and `/api/chat`
+  answer only a real browser. `instrumentation-client.js` lists them for
+  Vercel BotID and the routes call `guard()`, so a script calling them gets a
+  403. BotID only judges on Vercel; locally every request counts as human,
+  and `BOTID_TEST=BAD-BOT` simulates a bot. For stronger detection, turn on
+  BotID Deep Analysis under the project's Firewall tab (paid plans).
+- **Pace.** Each account (or IP when signed out) gets a per-minute and
+  per-day allowance for the catalogue, entry pages, saves, the assistant
+  and MCP, counted by `rate_hit()` from `20261101000006_rate_limits`. Past
+  it, APIs answer 429 with `retry-after` and pages show a short "slow down"
+  page. Limited callers are logged as `rate limited <rule> <caller>`.
+- **No bulk exports.** An Explore page is at most 24 entries. Over MCP,
+  `resources/list` gives members only their saved entries, and the
+  whole-library `stash://index` is for curators.
+- **AI crawlers.** `robots.txt` disallows them and `proxy.js` answers the
+  known ones with 403. Search engines still index the public pages.
+
+None of this stops a paying member copying what they can see by hand; it
+makes copying by machine slow, visible in the logs and tied to one account.

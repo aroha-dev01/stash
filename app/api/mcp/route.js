@@ -10,6 +10,7 @@ import { chatJSON } from '@/lib/llm';
 import { resolveKey, noteClient } from '@/lib/mcpkeys';
 import { policyFor, rpcAccess, canOpen } from '@/lib/access';
 import { PRO, proLine } from '@/lib/plans';
+import { waitFor } from '@/lib/guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -81,20 +82,29 @@ function scrub(value) {
 // trip through search.
 
 async function listResources() {
-  const { data } = await db
+  // Curators list the whole library. Members list only what they saved, so
+  // the resource list is never a way to copy the catalogue in one call;
+  // search_tools is how an agent finds everything else.
+  let query = db
     .from('links')
     .select('id,title,domain,summary,type,category,access')
     .order('created_at', { ascending: false });
+  if (!isOwner()) {
+    const { data: saves } = await db.from('saves').select('link_id').eq('user_id', caller.getStore()?.userId);
+    query = query.in('id', (saves || []).map((s) => s.link_id).concat(-1));
+  }
+  const { data } = await query;
 
-  // Filter before capping, so a Free key lists its whole collection, not
-  // whatever of it happens to sit among the newest rows.
-  const links = (data || []).filter((l) => canOpen(l, policy())).slice(0, 300).map((l) => ({
+  // Filter before capping: a lock may have changed since it was saved.
+  const links = (data || []).filter((l) => canOpen(l, policy())).slice(0, isOwner() ? 300 : 50).map((l) => ({
     uri: 'stash://link/' + l.id,
     name: l.title || l.domain,
     title: l.title || l.domain,
     description: [l.type, l.category, l.summary].filter(Boolean).join(' — ').slice(0, 200),
     mimeType: 'application/json',
   }));
+
+  if (!isOwner()) return { resources: links };
 
   return {
     resources: [
@@ -136,7 +146,8 @@ function resourceTemplates() {
 }
 
 async function readResource(uri) {
-  if (uri === 'stash://index') {
+  // The whole-library index is a curator's tool, not something to hand out per key.
+  if (uri === 'stash://index' && isOwner()) {
     const ctx = await buildContext('', { owner: isOwner(), policy: policy() });
     return {
       contents: [{ uri, mimeType: 'text/markdown', text: ctx.text }],
@@ -1563,6 +1574,18 @@ export async function POST(req) {
     body = await req.json();
   } catch {
     return NextResponse.json(fail(null, -32700, 'Parse error'), { status: 400 });
+  }
+
+  // Members' keys share one pace per account (lib/guard.js); the owner's
+  // script token does not count.
+  if (auth.userId) {
+    const wait = await waitFor('mcp', 'u:' + auth.userId, Array.isArray(body) ? Math.max(body.length, 1) : 1);
+    if (wait) {
+      return NextResponse.json(
+        fail(Array.isArray(body) ? null : body?.id ?? null, -32029, 'Too many requests. Try again in ' + wait + ' seconds.'),
+        { status: 429, headers: { 'retry-after': String(wait) } }
+      );
+    }
   }
 
   auth.policy = await policyFor({ isAdmin: auth.admin, isPro: auth.pro });

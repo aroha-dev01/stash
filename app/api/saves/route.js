@@ -3,6 +3,7 @@ import { db } from '@/lib/supabase';
 import { requireViewer } from '@/lib/auth';
 import { policyFor, canOpen } from '@/lib/access';
 import { PRO } from '@/lib/plans';
+import { guard } from '@/lib/guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,8 @@ export const dynamic = 'force-dynamic';
 export async function POST(req) {
   const { viewer, error } = await requireViewer();
   if (error) return error;
+  const stop = await guard(req, 'saves', viewer);
+  if (stop) return stop;
   const { link_id } = await req.json().catch(() => ({}));
   const id = Number(link_id);
   if (!Number.isFinite(id)) return NextResponse.json({ error: 'link_id is required' }, { status: 400 });
@@ -31,6 +34,8 @@ export async function POST(req) {
 export async function DELETE(req) {
   const { viewer, error } = await requireViewer();
   if (error) return error;
+  const stop = await guard(req, 'saves', viewer);
+  if (stop) return stop;
   const id = Number(req.nextUrl.searchParams.get('link_id'));
   await db.from('saves').delete().eq('user_id', viewer.id).eq('link_id', id);
   return NextResponse.json({ ok: true, saved: false });

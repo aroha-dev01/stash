@@ -10,6 +10,9 @@ import SiteHeader from '../../_ui/SiteHeader';
 import SiteFooter from '../../_ui/SiteFooter';
 import { ArrowIcon } from '../../_ui/icons';
 import EntryDetail from '../EntryDetail';
+import SlowDown from '../../_ui/SlowDown';
+import { headers } from 'next/headers';
+import { callerOf, waitFor } from '@/lib/guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +50,8 @@ export default async function EntryPage({ params }) {
   if (!row || row.dead) notFound();
 
   const viewer = await getViewer().catch(() => null);
+  const wait = await waitFor('entry', callerOf({ headers: await headers() }, viewer));
+  if (wait) return <SlowDown wait={wait} current='explore' />;
   const policy = await policyFor(viewer);
   const open = canOpen(row, policy);
 

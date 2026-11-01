@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { PRO } from '@/lib/plans';
 import CodeBox from '../_ui/CodeBox';
 import { CLIENTS, PLACEHOLDER_KEY, clientLabel, clientOf } from '../_ui/agents';
-import { startGoogleSignIn } from '../_ui/signin';
+import GoogleButton from '../_ui/GoogleButton';
 import { track } from '../_ui/track';
 
 // The setup guide. Every claim it makes about the connection is one the
@@ -107,12 +107,6 @@ export default function Guide({ signedIn, name, mcpUrl, isPro, initialClient, we
     load();
   };
 
-  const signIn = async () => {
-    setBusy(true);
-    const err = await startGoogleSignIn('/connect?client=' + client, 'setup-guide');
-    if (err) { setError(err); setBusy(false); }
-  };
-
   const onTabKey = (e, i) => {
     const d = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
     if (!d) return;
@@ -192,7 +186,7 @@ export default function Guide({ signedIn, name, mcpUrl, isPro, initialClient, we
               ) : (
                 <>
                   <p>Stash keys belong to a member account. Signing in with Google is free, and each account can hold up to {max} keys at once.</p>
-                  <div><button type='button' className='k-btn k-btn-accent' onClick={signIn} disabled={busy}>{busy ? 'Opening Google' : 'Sign in with Google'}</button></div>
+                  <div><GoogleButton next={'/connect?client=' + client} from='setup-guide' text='signin_with' label='Sign in with Google' className='k-btn k-btn-accent' /></div>
                 </>
               )}
             </li>

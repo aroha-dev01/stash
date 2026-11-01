@@ -1,3 +1,5 @@
+import { withBotId } from 'botid/next/config';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -27,4 +29,5 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+// BotID serves its invisible browser challenge through rewrites it adds here.
+export default withBotId(nextConfig);

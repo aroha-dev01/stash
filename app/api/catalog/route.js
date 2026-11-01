@@ -3,6 +3,7 @@ import { db } from '@/lib/supabase';
 import { getViewer } from '@/lib/auth';
 import { policyFor, TIERS } from '@/lib/access';
 import { browse } from '@/lib/browse';
+import { guard } from '@/lib/guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,8 @@ export const dynamic = 'force-dynamic';
 export async function GET(req) {
   const p = req.nextUrl.searchParams;
   const viewer = await getViewer();
+  const stop = await guard(req, 'catalog', viewer);
+  if (stop) return stop;
   const policy = await policyFor(viewer);
 
   let savedIds = [];

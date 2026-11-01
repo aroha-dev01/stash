@@ -53,6 +53,14 @@ about the entry itself.
 Premium tools stay listed for free members, prefixed `[Stash Premium]`, and
 answer with an upgrade message, so an agent can tell the user why.
 
+## Limits
+
+Each account's keys share 60 calls a minute and 1,500 a day; past that the
+server answers HTTP 429 with a JSON-RPC error (`-32029`) and `retry-after`.
+`resources/list` lists only the entries a member has saved (at most 50); the
+whole-library `stash://index` resource is for curators. Searches return at
+most 25 entries a call.
+
 ## Privacy
 
 The owner's private fields (`note`, `why`, `used_in`, `collections`, which name

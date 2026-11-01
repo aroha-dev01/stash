@@ -3,14 +3,17 @@ import { db } from '@/lib/supabase';
 import { getViewer } from '@/lib/auth';
 import { policyFor, canOpen } from '@/lib/access';
 import { viewOf } from '@/lib/catalog';
+import { guard } from '@/lib/guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /** One entry. A viewer who cannot open it gets the locked teaser, never the record. */
-export async function GET(_req, { params }) {
+export async function GET(req, { params }) {
   const { id } = await params;
   const viewer = await getViewer();
+  const stop = await guard(req, 'entry', viewer);
+  if (stop) return stop;
   const policy = await policyFor(viewer);
 
   const { data: row } = await db.from('links').select('*').eq('id', Number(id)).maybeSingle();

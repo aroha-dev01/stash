@@ -5,6 +5,7 @@ import { STASH_SOURCES_MARKER } from '@/lib/util';
 import { requireViewer } from '@/lib/auth';
 import { policyFor } from '@/lib/access';
 import { PRO } from '@/lib/plans';
+import { guard } from '@/lib/guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,10 +20,13 @@ export async function POST(req) {
   if (!viewer.isPro) {
     return NextResponse.json({ error: 'The AI assistant is part of Stash ' + PRO.name + '.', upgrade: '/pricing' }, { status: 402 });
   }
+  const stop = await guard(req, 'chat', viewer);
+  if (stop) return stop;
 
   const status = llmStatus();
   if (!status.enabled) {
-    return NextResponse.json({ error: status.reason }, { status: 400 });
+    console.error('assistant off: ' + status.reason);
+    return NextResponse.json({ error: 'The assistant is unavailable right now. Please try again later.' }, { status: 503 });
   }
 
   const body = await req.json().catch(() => ({}));

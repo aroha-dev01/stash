@@ -6,7 +6,7 @@ import { TOOLKITS } from '@/lib/taxonomy';
 import { PRO } from '@/lib/plans';
 import EntryCard, { SkeletonCard } from '../_ui/EntryCard';
 import { CloseIcon, LockIcon, SearchIcon, SparkIcon } from '../_ui/icons';
-import { startGoogleSignIn } from '../_ui/signin';
+import GoogleButton from '../_ui/GoogleButton';
 import { track } from '../_ui/track';
 import EntryDetail from './EntryDetail';
 
@@ -334,8 +334,6 @@ function Allowance({ level, levels }) {
 
 /** How many more entries match, and the one step that opens them. Counts only, never names. */
 function Hidden({ by, level, back }) {
-  const [busy, setBusy] = useState(false);
-  const signIn = async () => { setBusy(true); if (await startGoogleSignIn('/explore', 'hidden-notice')) setBusy(false); };
   if (!by) return null;
   const parts = [];
   if (by.members) parts.push(by.members + ' with a free account');
@@ -345,7 +343,7 @@ function Hidden({ by, level, back }) {
       <p><b>More match here:</b> {parts.join(', ')}.</p>
       <div className='k-notice-acts'>
         {level === 'visitor' && by.members ? (
-          <button type='button' className='k-btn k-btn-sm k-btn-accent' onClick={signIn} disabled={busy}>{busy ? 'Opening Google' : 'Sign in free'}</button>
+          <GoogleButton next='/explore' from='hidden-notice' size='medium' text='signup_with' label='Sign in free' className='k-btn k-btn-sm k-btn-accent' />
         ) : null}
         {by.premium ? (
           <Link className='k-btn k-btn-sm' href={'/upgrade?back=' + encodeURIComponent(back)} onClick={() => track('premium_locked_clicked', { from: 'hidden-notice' })}>See {PRO.name}</Link>

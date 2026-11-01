@@ -9,7 +9,7 @@ import AccessBadge from '../_ui/AccessBadge';
 import CodeBox from '../_ui/CodeBox';
 import { Fav } from '../_ui/EntryCard';
 import { BookmarkIcon, ExternalIcon, LockIcon } from '../_ui/icons';
-import { startGoogleSignIn } from '../_ui/signin';
+import GoogleButton from '../_ui/GoogleButton';
 import { track } from '../_ui/track';
 
 const PRICE = { 'open-source': 'Open source', free: 'Free', freemium: 'Freemium', paid: 'Paid' };
@@ -166,13 +166,7 @@ export default function EntryDetail({ link, signedIn, headingLevel = 2, onSaved 
 
 /** A useful preview of what is behind the lock, and the one step that opens it. */
 function LockedEntry({ link, kind, kit, H }) {
-  const [busy, setBusy] = useState(false);
   const pro = link.needs === 'pro';
-  const signIn = async () => {
-    setBusy(true);
-    const error = await startGoogleSignIn('/explore?open=' + link.id, 'locked-entry');
-    if (error) setBusy(false);
-  };
 
   return (
     <div className='k-locked'>
@@ -192,7 +186,7 @@ function LockedEntry({ link, kind, kit, H }) {
         {pro ? (
           <Link className='k-btn k-btn-accent' href={'/upgrade?entry=' + link.id} onClick={() => track('premium_locked_clicked', { from: 'locked-entry' })}>Explore {PRO.name}</Link>
         ) : (
-          <button type='button' className='k-btn k-btn-accent' onClick={signIn} disabled={busy}>{busy ? 'Opening Google' : 'Sign in free with Google'}</button>
+          <GoogleButton next={'/explore?open=' + link.id} from='locked-entry' text='signup_with' label='Sign in free with Google' className='k-btn k-btn-accent' />
         )}
         <Link className='k-btn' href={kit ? '/explore?toolkit=' + kit.key : '/explore'}>Browse what is open</Link>
       </div>

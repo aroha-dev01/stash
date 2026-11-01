@@ -20,9 +20,20 @@ const OPEN = [
   /^\/sitemap\.xml$/, /^\/robots\.txt$/,
   /^\/api\/catalog(\/|$)/,
   /^\/api\/mcp/, /^\/api\/save/, /^\/api\/cron\//, /^\/api\/backfill/,
+  // Vercel BotID's challenge script, which every visitor's browser loads.
+  /^\/149e9513-01fa-4fb0-aad4-566afd725d1b\//,
 ];
 
+// Crawlers that collect pages for AI training or AI answers. robots.txt asks
+// them to stay away; this turns away the ones that ask anyway. Agents working
+// for a member come in through MCP with a key instead.
+const AI_CRAWLERS = /GPTBot|ChatGPT-User|OAI-SearchBot|ClaudeBot|Claude-User|Claude-SearchBot|anthropic-ai|CCBot|Bytespider|PerplexityBot|Perplexity-User|Amazonbot|meta-externalagent|meta-externalfetcher|FacebookBot|cohere-ai|cohere-training-data-crawler|Diffbot|ImagesiftBot|Omgilibot|omgili|Timpibot|YouBot|PetalBot|AI2Bot|Ai2Bot-Dolma|Applebot-Extended|DuckAssistBot|Kangaroo Bot|PanguBot|Scrapy|img2dataset|Webzio-Extended|MistralAI-User|Google-CloudVertexBot|TikTokSpider|Brightbot|SemrushBot-OCOB|webzio|Crawl4AI|FirecrawlAgent|Firecrawl/i;
+
 export async function proxy(request) {
+  if (AI_CRAWLERS.test(request.headers.get('user-agent') || '') && request.nextUrl.pathname !== '/robots.txt') {
+    return new NextResponse('Automated collection of Stash is not allowed. See /robots.txt.', { status: 403 });
+  }
+
   // If Supabase falls back to the Site URL, the sign-in code arrives on the
   // home page. Finish the sign-in instead of showing the landing page.
   if (request.nextUrl.pathname === '/' && request.nextUrl.searchParams.has('code')) {

@@ -699,3 +699,9 @@ select.k-input { padding-right: 32px; }
 .k-up-kit b { font-size: 18px; font-weight: 600; letter-spacing: -0.015em; }
 .k-up-kit p { margin: 0; color: var(--color-text-secondary); font-size: 14.5px; }
 @media (max-width: 860px) { .k-up-kits { grid-template-columns: minmax(0, 1fr); } }
+
+/* Google's own sign-in button (GoogleButton.jsx), drawn by Google in an iframe. */
+.k-gsi { display: grid; gap: 8px; justify-items: start; }
+.k-auth-card .k-gsi { justify-items: center; }
+.k-gsi-box { display: flex; align-items: center; color-scheme: normal; }
+.k-gsi .k-link { background: none; border: 0; padding: 0; font: inherit; color: var(--color-accent); cursor: pointer; text-decoration: underline; }
