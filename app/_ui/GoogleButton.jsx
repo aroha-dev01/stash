@@ -11,13 +11,14 @@ import { track } from './track';
 // (signInWithIdToken). Because nobody is sent through Supabase's callback,
 // Google's screen names this site instead of <project>.supabase.co.
 //
-// It turns on when NEXT_PUBLIC_GOOGLE_CLIENT_ID is set, and the site's origin
-// is one of that client's Authorized JavaScript origins in Google Cloud.
+// It turns on when GOOGLE_CLIENT_ID is set (next.config.mjs passes it to the
+// browser), and the site's origin is one of that client's Authorized
+// JavaScript origins in Google Cloud.
 // Without the ID, or when Google's script cannot load (blockers, strict
 // privacy settings), it falls back to the redirect sign-in in ./signin.js,
 // drawn as this site's own button.
 
-const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || null;
+const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || null;
 const HEIGHT = { large: 40, medium: 32 };
 
 let script = null;

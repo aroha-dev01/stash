@@ -1,8 +1,18 @@
 import { withBotId } from 'botid/next/config';
 
+// Google's OAuth client ID is public by design: the browser hands it to
+// Google to draw the sign-in button. Only the client secret is private. So
+// GOOGLE_CLIENT_ID is passed to the browser bundle, but only when it has the
+// shape of a client ID, so a secret pasted there by mistake never ships.
+const GOOGLE_ID = /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/;
+const googleClientId = [process.env.GOOGLE_CLIENT_ID, process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID]
+  .map((v) => (v || '').trim())
+  .find((v) => GOOGLE_ID.test(v)) || '';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  env: { GOOGLE_CLIENT_ID: googleClientId },
   // Favicons and og:images come from arbitrary domains, so they are loaded as
   // plain <img> rather than through next/image. No remote patterns needed.
   images: { unoptimized: true },

@@ -5,7 +5,7 @@ import CodeBox from '../_ui/CodeBox';
 import { State, Toggle, ago, api } from './ui';
 
 const PLACEHOLDER = 'YOUR_SHORTCUT_KEY';
-const PRODUCTION = 'https://stashkit.vercel.app';
+const PRODUCTION = 'https://stash.aruo.dev';
 
 /** Where the phone should send links. A phone cannot reach localhost, so local work points at production. */
 const phoneOrigin = (origin) => (/\/\/(localhost|127\.0\.0\.1)/.test(origin) ? PRODUCTION : origin);

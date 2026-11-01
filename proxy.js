@@ -29,7 +29,26 @@ const OPEN = [
 // for a member come in through MCP with a key instead.
 const AI_CRAWLERS = /GPTBot|ChatGPT-User|OAI-SearchBot|ClaudeBot|Claude-User|Claude-SearchBot|anthropic-ai|CCBot|Bytespider|PerplexityBot|Perplexity-User|Amazonbot|meta-externalagent|meta-externalfetcher|FacebookBot|cohere-ai|cohere-training-data-crawler|Diffbot|ImagesiftBot|Omgilibot|omgili|Timpibot|YouBot|PetalBot|AI2Bot|Ai2Bot-Dolma|Applebot-Extended|DuckAssistBot|Kangaroo Bot|PanguBot|Scrapy|img2dataset|Webzio-Extended|MistralAI-User|Google-CloudVertexBot|TikTokSpider|Brightbot|SemrushBot-OCOB|webzio|Crawl4AI|FirecrawlAgent|Firecrawl/i;
 
+// stash.aruo.dev is home. Pages on the old Vercel address move there, so
+// sign-in (whose Google button only works on its listed origins) and cookies
+// live on one domain. Never /api: agents are configured with the old MCP
+// address, and a redirect would drop their Authorization header. Never a
+// sign-in already under way (/auth, ?code=), whose cookies are on this host.
+const OLD_HOST = 'stashkit.vercel.app';
+const HOME = 'https://stash.aruo.dev';
+
 export async function proxy(request) {
+  const { pathname, search, searchParams } = request.nextUrl;
+  if (
+    request.headers.get('host') === OLD_HOST &&
+    !pathname.startsWith('/api/') &&
+    !pathname.startsWith('/auth/') &&
+    !pathname.startsWith('/149e9513-') &&
+    !searchParams.has('code')
+  ) {
+    return NextResponse.redirect(HOME + pathname + search, 308);
+  }
+
   if (AI_CRAWLERS.test(request.headers.get('user-agent') || '') && request.nextUrl.pathname !== '/robots.txt') {
     return new NextResponse('Automated collection of Stash is not allowed. See /robots.txt.', { status: 403 });
   }

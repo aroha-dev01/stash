@@ -34,7 +34,7 @@ export const maxDuration = 60;
 
 const PROTOCOL = '2025-06-18';
 const SERVER = { name: 'stash', title: 'Stash', version: '3.0.0' };
-const APP_URL = 'https://stashkit.vercel.app';
+const APP_URL = 'https://stash.aruo.dev';
 
 // Who is calling, for the length of one request. Fluid compute serves several
 // requests from one instance at once, so this must never be a module global.

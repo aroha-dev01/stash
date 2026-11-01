@@ -10,7 +10,7 @@ import './site.css';
 const sans = Archivo({ subsets: ['latin'], style: ['normal', 'italic'], variable: '--font-archivo', display: 'swap' });
 const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-plex-mono', display: 'swap' });
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://stashkit.vercel.app';
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://stash.aruo.dev';
 const DESCRIPTION =
   'Describe what you are building and Stash helps your AI agent find the right skills, plugins, MCP servers and developer tools. Works with Claude Code, Cursor and GitHub Copilot.';
 

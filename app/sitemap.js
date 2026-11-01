@@ -5,7 +5,7 @@ import { TOOLKITS } from '@/lib/taxonomy';
 
 export const dynamic = 'force-dynamic';
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://stashkit.vercel.app';
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://stash.aruo.dev';
 
 /** Public pages, the toolkits, and every entry anyone may open. Nothing behind sign-in or Pro. */
 export default async function sitemap() {

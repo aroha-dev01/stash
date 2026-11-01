@@ -1,4 +1,4 @@
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://stashkit.vercel.app';
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://stash.aruo.dev';
 
 // AI crawlers may not read Stash at all, for training or for answers; proxy.js
 // turns away the ones that ignore this. Search engines still index the public

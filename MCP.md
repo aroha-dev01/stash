@@ -3,8 +3,11 @@
 Stash speaks MCP (streamable HTTP, JSON-RPC over POST) at:
 
 ```
-https://stashkit.vercel.app/api/mcp
+https://stash.aruo.dev/api/mcp
 ```
+
+Keys made for the old address, `https://stashkit.vercel.app/api/mcp`, keep
+working there; it is the same server.
 
 A plain GET returns a health summary listing the tools.
 

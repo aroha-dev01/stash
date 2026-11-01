@@ -1,7 +1,9 @@
 # Deploying Stash
 
 Production is the Vercel project **stashkit** (team `aroha5`), served at
-https://stashkit.vercel.app. Database, auth and the `embed` function live in
+https://stash.aruo.dev. The old address, https://stashkit.vercel.app, still
+answers `/api` (members' agents are configured with it) and sends every page
+to the new domain (`proxy.js`). Database, auth and the `embed` function live in
 the Supabase project **Stash** (`soynjbihrhcxyaimptjl`).
 
 ## Environment variables (Vercel, Production and Preview)
@@ -16,7 +18,7 @@ the Supabase project **Stash** (`soynjbihrhcxyaimptjl`).
 | `GITHUB_TOKEN` | optional, higher GitHub rate limits for repo stats |
 | `CRON_SECRET` | optional, Vercel signs the nightly refresh with it |
 | `STASH_TOKEN` | optional owner token for scripts; never put it in a phone shortcut |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | optional, the Google OAuth client ID (public); switches on Google's own sign-in button, see below |
+| `GOOGLE_CLIENT_ID` | optional, the Google OAuth client ID (not the secret); switches on Google's own sign-in button, see below |
 
 For local work, copy `.env.example` to `.env.local`. Never put real keys in
 `.env.example`, which is committed.
@@ -25,8 +27,8 @@ For local work, copy `.env.example` to `.env.local`. Never put real keys in
 
 Google is the only provider. Under Authentication, URL Configuration:
 
-- Site URL: `https://stashkit.vercel.app`
-- Redirect URLs: `https://stashkit.vercel.app/**`,
+- Site URL: `https://stash.aruo.dev`
+- Redirect URLs: `https://stash.aruo.dev/**`, `https://stashkit.vercel.app/**`,
   `http://localhost:3000/**`, and the preview pattern
   `https://*-aroha5.vercel.app/**` if previews should sign in.
 
@@ -35,19 +37,19 @@ instead, which is how new members once landed on an old deployment.
 
 ### Google's sign-in button
 
-With `NEXT_PUBLIC_GOOGLE_CLIENT_ID` set, sign-in uses Google's own button
+With `GOOGLE_CLIENT_ID` set, sign-in uses Google's own button
 (`app/_ui/GoogleButton.jsx`) and `signInWithIdToken`, so nobody passes through
 Supabase's callback and Google's screen names this site instead of
 `<project>.supabase.co`. To switch it on:
 
 1. Google Cloud Console, the OAuth web client Supabase uses: add every site
    origin under **Authorized JavaScript origins**
-   (`https://stashkit.vercel.app`, `http://localhost:3000`, and any custom
-   domain).
+   (`https://stash.aruo.dev` and `http://localhost:3000`).
 2. Supabase, Authentication, Providers, Google: the same client ID must be
    the provider's client ID (or listed among its client IDs).
-3. Set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in Vercel and redeploy (it is read at
-   build time).
+3. Set `GOOGLE_CLIENT_ID` in Vercel and redeploy. It is read at build time
+   and `next.config.mjs` passes it to the browser, which needs it to draw the
+   button; it is only passed when it has the shape of a client ID.
 
 Unset, or when Google's script cannot load, the site falls back to the
 redirect sign-in. Showing the name "Stash" instead of a domain still needs

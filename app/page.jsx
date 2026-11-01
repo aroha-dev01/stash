@@ -29,7 +29,7 @@ export const dynamic = 'force-dynamic';
 const DEMO_QUERY = 'build a polished landing page';
 // The three toolkits the brief leads with come first; the bento gives them the most room.
 const TILE_ORDER = ['ui-ux', 'content', 'automation', 'development', 'research'];
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://stashkit.vercel.app';
+const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://stash.aruo.dev';
 
 /** What a toolkit tile says about access, true for whoever is looking. */
 function accessLine(t, level) {
