@@ -10,5 +10,7 @@ initBotId({
     { path: '/api/saves', method: 'POST' },
     { path: '/api/saves', method: 'DELETE' },
     { path: '/api/chat', method: 'POST' },
+    // A member's projects: /api/projects and everything under it, every method.
+    { path: '/api/projects*', method: '*' },
   ],
 });

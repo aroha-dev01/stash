@@ -44,6 +44,31 @@ const AGENT_PATH = /^\/(robots\.txt$|api\/mcp(\/|$)|api\/oauth\/|\.well-known\/)
 const OLD_HOST = 'stashkit.vercel.app';
 const HOME = 'https://stash.aruo.dev';
 
+// Writes that ride on the session cookie must come from Stash's own pages.
+// The cookie is SameSite=Lax, which stops other sites but not a sibling
+// subdomain of aruo.dev, and a form posting text/plain still parses as JSON.
+// So a write whose Origin or Fetch Metadata says it came from anywhere else is
+// refused here, before any route runs. Requests that send neither (scripts,
+// the iOS shortcut, agents) are unaffected; endpoints that authenticate with
+// their own bearer key, or serve browser-based MCP clients on other origins,
+// are exempt.
+const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const OWN_AUTH = /^\/api\/(mcp|save|cron|backfill)(\/|$)|^\/api\/oauth\/(token|register)(\/|$)/;
+
+function crossSiteWrite(request) {
+  if (!UNSAFE.has(request.method) || OWN_AUTH.test(request.nextUrl.pathname)) return false;
+  const site = request.headers.get('sec-fetch-site');
+  if (site && site !== 'same-origin' && site !== 'none') return true;
+  const origin = request.headers.get('origin');
+  if (!origin) return false;
+  const host = (request.headers.get('x-forwarded-host') || request.headers.get('host') || '').split(',')[0].trim();
+  try {
+    return new URL(origin).host !== host;
+  } catch {
+    return true; // "null" and anything unparseable
+  }
+}
+
 export async function proxy(request) {
   const { pathname, search, searchParams } = request.nextUrl;
   if (
@@ -59,6 +84,10 @@ export async function proxy(request) {
 
   if (AI_CRAWLERS.test(request.headers.get('user-agent') || '') && !AGENT_PATH.test(pathname)) {
     return new NextResponse('Automated collection of Stash is not allowed. See /robots.txt.', { status: 403 });
+  }
+
+  if (crossSiteWrite(request)) {
+    return NextResponse.json({ error: 'Requests that change your account must come from Stash itself.' }, { status: 403 });
   }
 
   // If Supabase falls back to the Site URL, the sign-in code arrives on the

@@ -4,7 +4,9 @@ import { getViewer } from '@/lib/auth';
 import { connectionOf } from '@/lib/mcpkeys';
 import { db } from '@/lib/supabase';
 import { PRO, FREE } from '@/lib/plans';
+import { listProjects } from '@/lib/projects';
 import SiteHeader from '../_ui/SiteHeader';
+import ProjectMap from '../projects/ProjectMap';
 import SiteFooter from '../_ui/SiteFooter';
 import { clientLabel } from '../_ui/agents';
 import { ArrowIcon } from '../_ui/icons';
@@ -18,9 +20,10 @@ export default async function Account() {
   const viewer = await getViewer();
   if (!viewer) redirect('/login?next=/account');
 
-  const [conn, { count: saved }] = await Promise.all([
+  const [conn, { count: saved }, projects] = await Promise.all([
     connectionOf(viewer.id),
     db.from('saves').select('link_id', { count: 'exact', head: true }).eq('user_id', viewer.id),
+    viewer.isPro ? listProjects(viewer.id).catch(() => []) : Promise.resolve([]),
   ]);
 
   // Plan and role are separate: a curator may be on either plan.
@@ -63,6 +66,39 @@ export default async function Account() {
             </p>
           </div>
           <Link className={'k-btn ' + (conn.connected ? '' : 'k-btn-accent')} href='/connect'>{conn.connected ? 'Manage keys' : 'Connect your agent'}</Link>
+        </section>
+
+        <section className='k-block k-pj-acct' aria-labelledby='proj-h'>
+          <div className='k-block-row'>
+            <div className='k-block-head'>
+              <h2 id='proj-h' className='k-h3'>
+                Projects {viewer.isPro ? null : <span className='k-pro'>{PRO.name}</span>}
+              </h2>
+              <p className='k-muted' style={{ margin: 0 }}>
+                {!viewer.isPro
+                  ? 'Make a project for each thing you build, file the skills it needs into folders like Frontend and Backend, and your agent works from them in every session.'
+                  : projects.length
+                    ? projects.length + (projects.length === 1 ? ' project, ' : ' projects, ') + projects.reduce((n, p) => n + p.skills, 0) + ' skills filed. Tell your agent which project you are on and it works from them.'
+                    : 'Make a project for each thing you build, and file the skills each part of it needs.'}
+              </p>
+            </div>
+            <Link className={'k-btn' + (viewer.isPro && projects.length ? '' : ' k-btn-accent')} href={viewer.isPro ? (projects.length ? '/projects' : '/projects?new=1') : '/projects'}>
+              {viewer.isPro ? (projects.length ? 'Open projects' : 'Make a project') : 'See projects'}
+            </Link>
+          </div>
+          {viewer.isPro && projects.length ? (
+            <ul className='k-pj-acct-list'>
+              {projects.slice(0, 3).map((p) => (
+                <li key={p.id}>
+                  <Link href={'/projects/' + p.slug}>
+                    <ProjectMap name={p.name} folders={p.folders} mini height={96} />
+                    <b>{p.name}</b>
+                    <span className='k-small k-dim'>{p.folders.length} folders · {p.skills} skills</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </section>
 
         <div className='k-plans'>

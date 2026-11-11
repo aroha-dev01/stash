@@ -45,6 +45,7 @@ export default async function Pricing() {
     ['The full library', n('premium', 'every') + ' entries' + (lockedNames.length ? ', including the ' + lockedNames.join(', ') + ' ' + (lockedNames.length === 1 ? 'toolkit' : 'toolkits') : '') + ', on the web and in your agent'],
     ['Stack building', 'your agent describes a project and gets tools that fit together, with runners-up'],
     ['Comparisons', 'similar tools side by side, with the question that settles the choice'],
+    ['Projects', 'one per thing you build, with skills filed by folder (Frontend, Backend, UI/UX...), which your agent works from in every session'],
     ['Project reviews', 'improvements to a codebase drawn from the catalogue'],
     ['The Stash assistant', 'ask the catalogue anything on the web, with answers that link to entries'],
   ];
@@ -55,6 +56,7 @@ export default async function Pricing() {
     ['Connect an agent over MCP', 'No', 'Yes', 'Yes'],
     ['Saved tools', 'No', 'Yes', 'Yes'],
     ['AI recommendations in your agent', 'No', 'No', 'Yes'],
+    ['Projects your agent works from', 'No', 'No', 'Yes'],
     ['The Stash assistant on the web', 'No', 'No', 'Yes'],
   ];
 

@@ -307,7 +307,7 @@ export default function Explore({ signedIn, level, initial, initialPage, overvie
         )}
       </section>
 
-      {openId ? <Drawer id={openId} signedIn={signedIn} onClose={close} onSaved={(id, v) => setPage((cur) => cur && { ...cur, items: cur.items.map((i) => (i.id === id ? { ...i, saved: v } : i)) })} /> : null}
+      {openId ? <Drawer id={openId} signedIn={signedIn} pro={level === 'premium' || level === 'admin'} onClose={close} onSaved={(id, v) => setPage((cur) => cur && { ...cur, items: cur.items.map((i) => (i.id === id ? { ...i, saved: v } : i)) })} /> : null}
     </>
   );
 }
@@ -371,7 +371,7 @@ function LockedToolkit({ kit, signedIn, back }) {
   );
 }
 
-function Drawer({ id, signedIn, onClose, onSaved }) {
+function Drawer({ id, signedIn, pro, onClose, onSaved }) {
   const [link, setLink] = useState(null);
   const [error, setError] = useState(null);
   const closeRef = useRef(null);
@@ -414,7 +414,7 @@ function Drawer({ id, signedIn, onClose, onSaved }) {
           <button ref={closeRef} type='button' className='k-x' onClick={onClose} aria-label='Close'><CloseIcon /></button>
         </div>
         <div className='k-sheet-body'>
-          {error ? <p className='k-error'>{error}</p> : !link ? <p className='k-muted'>Opening</p> : <EntryDetail link={link} signedIn={signedIn} onSaved={onSaved} />}
+          {error ? <p className='k-error'>{error}</p> : !link ? <p className='k-muted'>Opening</p> : <EntryDetail link={link} signedIn={signedIn} pro={pro} onSaved={onSaved} />}
         </div>
       </aside>
     </>

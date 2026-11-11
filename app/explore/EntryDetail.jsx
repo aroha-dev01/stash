@@ -10,6 +10,7 @@ import CodeBox from '../_ui/CodeBox';
 import { Fav } from '../_ui/EntryCard';
 import { BookmarkIcon, ExternalIcon, LockIcon } from '../_ui/icons';
 import GoogleButton from '../_ui/GoogleButton';
+import AddToProject from '../_ui/AddToProject';
 import { track } from '../_ui/track';
 
 const PRICE = { 'open-source': 'Open source', free: 'Free', freemium: 'Freemium', paid: 'Paid' };
@@ -22,7 +23,7 @@ const WHO = {
 const kitOf = (key) => TOOLKITS.find((t) => t.key === key);
 
 /** Everything about one entry. The Explore drawer and /explore/[slug] both use it. */
-export default function EntryDetail({ link, signedIn, headingLevel = 2, onSaved }) {
+export default function EntryDetail({ link, signedIn, pro = false, headingLevel = 2, onSaved }) {
   const [saved, setSaved] = useState(!!link.saved);
   const [img, setImg] = useState(true);
   const H = 'h' + headingLevel;
@@ -93,6 +94,7 @@ export default function EntryDetail({ link, signedIn, headingLevel = 2, onSaved 
         ) : (
           <Link className='k-btn k-btn-quiet' href={'/login?next=' + encodeURIComponent('/explore?open=' + link.id)}>Sign in to save</Link>
         )}
+        {signedIn && pro ? <AddToProject link={link} /> : null}
       </div>
 
       {link.use_cases?.length ? (

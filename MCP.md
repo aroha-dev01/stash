@@ -79,10 +79,34 @@ about the entry itself.
 | `search_tools`, `get_tool`, `how_to_use`, `list_categories`, `find_inspiration` | Free |
 | `mark_used` | Free (adds the tool to the member's saved list) |
 | `build_stack`, `compare_tools`, `review_project`, `ask_stash` | Premium |
+| `list_projects`, `get_project`, `add_to_project` | Premium (the member's own projects) |
 | `save_tool` | Curators only |
 
 Premium tools stay listed for free members, prefixed `[Stash Premium]`, and
 answer with an upgrade message, so an agent can tell the user why.
+
+## Projects
+
+A Premium member makes projects on `/projects`: one per thing they build,
+split into folders (Frontend, Backend, UI/UX, Content...), each holding the
+catalogue entries chosen for that part of the work, with a line on why. The
+agent keeps every session on a project consistent by working from them:
+
+| Tool, resource or prompt | What it does |
+|---|---|
+| `list_projects` | The member's projects, with folders and counts |
+| `get_project` `{ stash_project, folder?, detail? }` | One project's skills by folder, with `why_here`. Matches name (any case), slug or id |
+| `add_to_project` `{ stash_project, folder, id, note? }` | Files an entry in an existing folder. Writes only the member's own data; filing twice is harmless |
+| `stash_project` on `search_tools`, `build_stack`, `review_project` | Searches or builds only from the project's skills; `review_project` treats them as settled. `search_tools` also takes `stash_folder` |
+| `stash://project/{slug}` | The project as an attachable resource |
+| prompt `use_project` | "Work from my Stash project X" in one step |
+
+The server instructions tell the agent to call `get_project` first whenever
+the member names a project, AGENTS.md or CLAUDE.md names one, or the repo
+matches one from `list_projects`. Each project page on `/projects` gives a
+snippet for AGENTS.md / CLAUDE.md / `.cursorrules` that does exactly that.
+Project tools answer only for a member's key: the owner script token has no
+projects, and a free key gets an upgrade message.
 
 ## Limits
 

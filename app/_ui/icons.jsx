@@ -118,6 +118,59 @@ export function GlobeIcon({ size = 12 }) {
   );
 }
 
+export function PlusIcon({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox='0 0 16 16' fill='none' aria-hidden='true'>
+      <path d='M8 3v10M3 8h10' stroke='currentColor' strokeWidth='1.7' strokeLinecap='round' />
+    </svg>
+  );
+}
+
+export function PencilIcon({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox='0 0 16 16' fill='none' aria-hidden='true'>
+      <path d='M10.5 3.2l2.3 2.3L6 12.3l-3 .7.7-3 6.8-6.8z' stroke='currentColor' strokeWidth='1.4' strokeLinejoin='round' />
+    </svg>
+  );
+}
+
+export function TrashIcon({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox='0 0 16 16' fill='none' aria-hidden='true'>
+      <path d='M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5' stroke='currentColor' strokeWidth='1.4' strokeLinecap='round' strokeLinejoin='round' />
+    </svg>
+  );
+}
+
+export function UpIcon({ size = 14, down = false }) {
+  return (
+    <svg width={size} height={size} viewBox='0 0 16 16' fill='none' aria-hidden='true' style={down ? { transform: 'rotate(180deg)' } : undefined}>
+      <path d='M8 12.5v-9M4.5 7L8 3.5 11.5 7' stroke='currentColor' strokeWidth='1.6' strokeLinecap='round' strokeLinejoin='round' />
+    </svg>
+  );
+}
+
+export function GripIcon({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox='0 0 16 16' fill='currentColor' aria-hidden='true'>
+      <circle cx='6' cy='4' r='1.2' /><circle cx='10' cy='4' r='1.2' />
+      <circle cx='6' cy='8' r='1.2' /><circle cx='10' cy='8' r='1.2' />
+      <circle cx='6' cy='12' r='1.2' /><circle cx='10' cy='12' r='1.2' />
+    </svg>
+  );
+}
+
+export function NodesIcon({ size = 16 }) {
+  // Projects: a hub with three branches.
+  return (
+    <svg width={size} height={size} viewBox='0 0 16 16' fill='none' aria-hidden='true'>
+      <circle cx='8' cy='8' r='2.2' stroke='currentColor' strokeWidth='1.4' />
+      <circle cx='3' cy='3.5' r='1.5' fill='currentColor' /><circle cx='13' cy='4' r='1.5' fill='currentColor' /><circle cx='8' cy='14' r='1.5' fill='currentColor' />
+      <path d='M6.4 6.6L4.1 4.5M9.7 6.7l2.2-1.8M8 10.2v2.3' stroke='currentColor' strokeWidth='1.2' />
+    </svg>
+  );
+}
+
 export function ChevronIcon({ size = 14 }) {
   return (
     <svg width={size} height={size} viewBox='0 0 16 16' fill='none' aria-hidden='true'>

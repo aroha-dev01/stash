@@ -5,6 +5,7 @@ import { normalizeUrl } from '@/lib/util';
 import { inferSource } from '@/lib/taxonomy';
 import { resolveKey } from '@/lib/mcpkeys';
 import { getSetting, newEntryAccess } from '@/lib/settings';
+import { sameSecret } from '@/lib/secrets';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -127,8 +128,7 @@ async function allowed(req) {
   const given = (header.startsWith('Bearer ') ? header.slice(7) : p.get('key') || p.get('token') || '').trim();
   if (!given) return false;
 
-  const token = process.env.STASH_TOKEN;
-  if (token && given === token) return true;
+  if (sameSecret(given, process.env.STASH_TOKEN)) return true;
 
   if (!(await getSetting('ios_shortcut')).enabled) return false;
   const who = await resolveKey(given, 'shortcut');

@@ -78,7 +78,7 @@ export default async function EntryPage({ params }) {
               {kit ? <Link href={'/explore?toolkit=' + kit.key}>{kit.label}</Link> : null}
               {open ? <><span aria-hidden='true'>/</span><span>{row.title}</span></> : null}
             </nav>
-            <EntryDetail link={link} signedIn={!!viewer} headingLevel={1} />
+            <EntryDetail link={link} signedIn={!!viewer} pro={!!viewer?.isPro} headingLevel={1} />
           </article>
           <aside className='k-entry-side'>
             <div className='k-block'>

@@ -3,6 +3,7 @@ import { db } from '@/lib/supabase';
 import { fetchRepo } from '@/lib/scrape';
 import { enrichLink } from '@/lib/enrich';
 import { fetchTimeout, USER_AGENT } from '@/lib/util';
+import { sameSecret, bearerOf } from '@/lib/secrets';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,18 +26,14 @@ const REPO_REFRESH = 10; // GitHub calls per run - unauthenticated is rate limit
 const REENRICH = 3;      // slowest step, so the tightest cap
 
 function authorised(req) {
-  // Vercel signs its own cron invocations with CRON_SECRET when it is set.
-  const secret = process.env.CRON_SECRET;
-  const auth = req.headers.get('authorization') || '';
-
-  if (secret) return auth === 'Bearer ' + secret;
-
-  // No secret configured: accept Vercel's own scheduler, or a manual run
-  // carrying the MCP token if one exists.
-  if (req.headers.get('x-vercel-cron')) return true;
-  const token = process.env.STASH_TOKEN;
-  if (token) return auth === 'Bearer ' + token;
-  return true;
+  // Vercel signs its own cron invocations with CRON_SECRET when it is set; a
+  // manual run may carry STASH_TOKEN instead. With neither set, nobody runs
+  // it: this job spends GitHub and model calls, and an x-vercel-cron header is
+  // something any caller can send, so it proves nothing on its own.
+  const given = bearerOf(req);
+  if (sameSecret(given, process.env.CRON_SECRET) || sameSecret(given, process.env.STASH_TOKEN)) return true;
+  if (!process.env.CRON_SECRET) console.error('cron refused: set CRON_SECRET in Vercel so the nightly run can sign in');
+  return false;
 }
 
 /**

@@ -12,6 +12,9 @@ import { policyFor, rpcAccess, canOpen } from '@/lib/access';
 import { PRO, proLine } from '@/lib/plans';
 import { waitFor } from '@/lib/guard';
 import { originOf } from '@/lib/oauth';
+import { listProjects, findProject, loadProject, addItem, clean } from '@/lib/projects';
+import { hintOf, templateOf } from '@/lib/projectTemplates';
+import { sameSecret } from '@/lib/secrets';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -55,8 +58,65 @@ function openOr(row, id) {
   return row;
 }
 
-// AI-backed tools: each call spends a model request, so they are Pro.
-const PRO_TOOLS = new Set(['build_stack', 'compare_tools', 'review_project', 'ask_stash']);
+// Pro: the AI-backed tools (each call spends a model request) and the
+// member's own projects.
+const PRO_TOOLS = new Set(['build_stack', 'compare_tools', 'review_project', 'ask_stash', 'list_projects', 'get_project', 'add_to_project']);
+
+/* --------------------------------------------------------------- projects */
+
+// A Premium member files the skills for each thing they build into a Stash
+// project, split into folders (Frontend, Backend, UI/UX...). These read and
+// write only the calling member's own projects (lib/projects.js scopes every
+// query by the key's user id), so one member's projects never reach another.
+
+const PROJECTS_PRO = () =>
+  'Stash projects are part of ' + proLine() + ': save the skills for each thing you build, by folder, and your agent ' +
+  'works from them. Upgrade at ' + APP_URL + '/pricing.';
+
+// What render() and how_to_use read from a link. Listed, so a project read never drags the embedding along.
+const RENDER_COLUMNS =
+  'id,title,url,domain,summary,description,image,category,type,role,integration_effort,commercial_ok,use_cases,' +
+  'sections,effect_kind,style_tags,usage_format,tags,pricing,is_open_source,repo_owner,repo_name,repo_stars,' +
+  'repo_forks,repo_open_prs,repo_open_issues,repo_language,repo_license,repo_pushed_at,install,quickstart,' +
+  'works_with,requires,avoid_when,limits,maturity,note,collections,dead,dead_reason,status,access,enriched_v';
+
+function member() {
+  const c = caller.getStore();
+  if (!c?.userId) throw new Error('Stash projects belong to a member. Connect with your own Stash key from ' + APP_URL + '/connect.');
+  if (!c.pro) throw new Error(PROJECTS_PRO());
+  return c.userId;
+}
+
+/** The member's project by name, slug or id, or an error that lists the ones they have. */
+async function projectFor(ref) {
+  const userId = member();
+  const name = clean(ref, 80);
+  if (!name) throw new Error('Pass stash_project: the name of one of your Stash projects. Call list_projects to see them.');
+  const p = await findProject(userId, name);
+  if (p) return { userId, project: p };
+  const all = await listProjects(userId);
+  throw new Error(
+    'No Stash project called "' + name + '". ' +
+    (all.length ? 'Your projects: ' + all.map((x) => x.name).join(', ') + '.' : 'You have no projects yet.') +
+    ' Make or edit them at ' + APP_URL + '/projects.'
+  );
+}
+
+/** The entry ids filed in a project, or in one folder of it. */
+async function projectIds(ref, folderName) {
+  const { userId, project } = await projectFor(ref);
+  const loaded = await loadProject(userId, project, policy());
+  let folders = loaded.folders;
+  const want = clean(folderName, 40).toLowerCase();
+  if (want) {
+    folders = folders.filter((f) => f.name.toLowerCase() === want);
+    if (!folders.length) {
+      throw new Error('No folder "' + folderName + '" in ' + project.name + '. Folders: ' + loaded.folders.map((f) => f.name).join(', ') + '.');
+    }
+  }
+  const ids = [...new Set(folders.flatMap((f) => f.items.filter((i) => !i.locked).map((i) => i.link_id)))];
+  return { project, ids };
+}
 
 // The owner's private working notes. render() already leaves them out for
 // everyone else; this is the backstop for any other path that returns rows.
@@ -105,10 +165,12 @@ async function listResources() {
     mimeType: 'application/json',
   }));
 
-  if (!isOwner()) return { resources: links };
+  const projects = await projectResources();
+  if (!isOwner()) return { resources: [...projects, ...links] };
 
   return {
     resources: [
+      ...projects,
       {
         uri: 'stash://index',
         name: 'stash-index',
@@ -123,6 +185,23 @@ async function listResources() {
   };
 }
 
+/** A Premium member's projects, so a client can attach one as context in a click. */
+async function projectResources() {
+  const c = caller.getStore();
+  if (!c?.userId || !c.pro) return [];
+  const all = await listProjects(c.userId).catch(() => []);
+  return all.map((p) => ({
+    uri: 'stash://project/' + p.slug,
+    name: 'project-' + p.slug,
+    title: 'Stash project: ' + p.name,
+    description: (
+      p.skills + (p.skills === 1 ? ' skill' : ' skills') + ' in ' + p.folders.map((f) => f.name).join(', ') +
+      (p.description ? ' — ' + p.description : '')
+    ).slice(0, 200),
+    mimeType: 'application/json',
+  }));
+}
+
 function resourceTemplates() {
   const templates = [
     {
@@ -133,6 +212,16 @@ function resourceTemplates() {
       mimeType: 'application/json',
     },
   ];
+  const c = caller.getStore();
+  if (c?.userId && c.pro) {
+    templates.push({
+      uriTemplate: 'stash://project/{name}',
+      name: 'stash-project',
+      title: 'One of your Stash projects',
+      description: 'The skills you filed for a project, by folder, to work from consistently.',
+      mimeType: 'application/json',
+    });
+  }
   // Project collections are the owner's client work.
   if (isOwner()) {
     templates.push({
@@ -146,7 +235,8 @@ function resourceTemplates() {
   return { resourceTemplates: templates };
 }
 
-async function readResource(uri) {
+async function readResource(raw) {
+  const uri = String(raw || '');
   // The whole-library index is a curator's tool, not something to hand out per key.
   if (uri === 'stash://index' && isOwner()) {
     const ctx = await buildContext('', { owner: isOwner(), policy: policy() });
@@ -162,6 +252,18 @@ async function readResource(uri) {
     return {
       contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(render(data), null, 2) }],
     };
+  }
+
+  const proj = String(uri || '').match(/^stash:\/\/project\/(.+)$/);
+  if (proj) {
+    let ref;
+    try {
+      ref = decodeURIComponent(proj[1]);
+    } catch {
+      throw new Error('Unknown resource: ' + uri);
+    }
+    const out = await getProjectTool({ stash_project: ref });
+    return { contents: [{ uri, mimeType: 'application/json', text: JSON.stringify(out, null, 2) }] };
   }
 
   const coll = uri.match(/^stash:\/\/collection\/(.+)$/);
@@ -225,6 +327,12 @@ const PROMPTS = [
     description: 'Surface broken links, archived repos and anything that never enriched.',
     arguments: [],
   },
+  {
+    name: 'use_project',
+    title: 'Work from one of my Stash projects',
+    description: 'Load the skills you filed for a project in Stash, by folder, and keep this session consistent with them.',
+    arguments: [{ name: 'stash_project', description: 'The project’s name in Stash, e.g. ABC.', required: true }],
+  },
 ];
 
 function getPrompt(name, args = {}) {
@@ -250,6 +358,13 @@ function getPrompt(name, args = {}) {
       'Audit my library. Use search_tools with include_broken true to find dead links, and list_categories ' +
       'for the totals. Flag archived repos and anything unmaintained for over a year. Keep it short: ' +
       'what should I remove, and what should I replace.',
+    use_project:
+      'This work is for my Stash project "' + clean(args.stash_project, 80) + '".\n' +
+      'Call get_project with that stash_project before anything else. Its folders (Frontend, Backend, UI/UX and so on) ' +
+      'hold the skills and tools I chose for each part of it: use those as the standard here, so frontend work uses ' +
+      'what is in the frontend folder and so on, and every session on this project stays consistent. Read why_here ' +
+      'on each one. Call how_to_use before integrating any of them. If a need falls outside every folder, tell me ' +
+      'and suggest something rather than choosing silently, and once I agree, file it with add_to_project.',
   }[name];
 
   if (!text) throw new Error('Unknown prompt: ' + name);
@@ -281,6 +396,9 @@ async function complete(ref, argument) {
     values = EFFECTS;
   } else if (name === 'type') {
     values = ['library', 'saas', 'cli', 'app', 'reference', 'template', 'mcp-server', 'dataset', 'article', 'other'];
+  } else if (name === 'stash_project') {
+    const c = caller.getStore();
+    values = c?.userId && c.pro ? (await listProjects(c.userId)).map((p) => p.name) : [];
   } else if (name === 'language' || (name === 'collection' && isOwner()) || name === 'works_with') {
     const { data } = await db.rpc('stash_facets');
     const key = name === 'language' ? 'languages' : name === 'collection' ? 'collections' : 'tags';
@@ -305,7 +423,7 @@ async function authorise(req) {
   const given = bearer || p.get('key') || p.get('token');
   if (!given) return { ok: false, given: false };
 
-  if (token() && given === token()) return { ok: true, admin: true, pro: true, canWrite: true, userId: null };
+  if (sameSecret(given, token())) return { ok: true, admin: true, pro: true, canWrite: true, userId: null };
 
   const member = await resolveKey(given);
   if (!member) return { ok: false, given: true };
@@ -402,6 +520,17 @@ const READ_TOOLS = [
           type: 'boolean',
           description: 'Include links a health check found unreachable. Off by default.',
         },
+        stash_project: {
+          type: 'string',
+          description:
+            "Premium. Search only the skills filed in one of the member's Stash projects (its name). " +
+            'Use it when the work belongs to a project they set up in Stash, so picks stay consistent with it. ' +
+            'Without a query, lists what the project holds.',
+        },
+        stash_folder: {
+          type: 'string',
+          description: 'With stash_project: only one folder of it, e.g. Frontend or Backend.',
+        },
         limit: { type: 'number', description: 'Max results, 1-25. Defaults to 8.' },
       },
       required: ['query'],
@@ -460,6 +589,10 @@ const READ_TOOLS = [
           description: 'What is being built, in plain language. Mention the framework if known.',
         },
         collection: { type: 'string', description: 'Optional project name to restrict the picks to.' },
+        stash_project: {
+          type: 'string',
+          description: "Optional. One of the member's Stash projects: pick only from the skills filed in it.",
+        },
       },
       required: ['project'],
     },
@@ -520,6 +653,12 @@ const READ_TOOLS = [
         goal: {
           type: 'string',
           description: 'Optional. What you are about to do — the feature, fix or refactor at hand.',
+        },
+        stash_project: {
+          type: 'string',
+          description:
+            "Optional. The member's Stash project for this work. Its chosen skills are treated as settled, " +
+            'so suggestions build on them instead of replacing them.',
         },
       },
       required: ['project'],
@@ -584,6 +723,59 @@ const READ_TOOLS = [
         },
       },
       required: ['question'],
+    },
+  },
+  {
+    name: 'list_projects',
+    title: "List the member's Stash projects",
+    description:
+      'The projects this member set up in Stash, each with its folders (Frontend, Backend, UI/UX, Content...) ' +
+      'and how many skills are filed in each. Call this at the start of work in a repo to see whether it ' +
+      'matches one of their projects by name; if it does, call get_project.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_project',
+    title: 'Get the skills for one Stash project',
+    description:
+      'THE CONSISTENCY ONE. When the member says which project they are working on ("this is project ABC"), ' +
+      'when AGENTS.md or CLAUDE.md names a Stash project, or when the repo matches one from list_projects, call ' +
+      'this FIRST. It returns the skills and tools they chose for that project, grouped by folder, with why each ' +
+      'is there. Use them as the standard for the project, in every session, instead of picking afresh.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        stash_project: { type: 'string', description: 'The project name (any case) or slug.' },
+        folder: { type: 'string', description: 'Optional: only one folder, e.g. Frontend.' },
+        detail: {
+          type: 'string',
+          enum: ['brief', 'full'],
+          description: 'brief (default): what each skill is and how to install it. full: everything, including quickstarts and repo health.',
+        },
+      },
+      required: ['stash_project'],
+    },
+  },
+];
+
+// Writes to the member's own data, never the shared catalogue.
+const MEMBER_TOOLS = [
+  {
+    name: 'add_to_project',
+    title: 'File a tool in a Stash project',
+    description:
+      "File a catalogue entry in a folder of one of the member's Stash projects, with a one-line reason. " +
+      'Use it once the member agrees a tool belongs in the project, so the next session finds it there. ' +
+      'Filing the same tool twice is harmless.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        stash_project: { type: 'string', description: 'The project name.' },
+        folder: { type: 'string', description: 'An existing folder of that project, e.g. Backend. get_project lists them.' },
+        id: { type: 'number', description: 'The tool id from search_tools.' },
+        note: { type: 'string', description: 'Optional: why it belongs here, in a line. Shown to every later session.' },
+      },
+      required: ['stash_project', 'folder', 'id'],
     },
   },
 ];
@@ -717,9 +909,14 @@ function render(link) {
 async function searchTools(args) {
   const query = String(args.query || '').trim();
   const stage = STAGES.find((s) => s.key === String(args.stage || '').trim())?.key || null;
-  if (!query && !stage && !args.section && !args.style && !args.effect) {
-    throw new Error('query is required (or pass stage, section, style or effect to browse)');
+  if (!query && !stage && !args.section && !args.style && !args.effect && !args.stash_project) {
+    throw new Error('query is required (or pass stage, section, style, effect or stash_project to browse)');
   }
+
+  // Inside one of the member's projects: only what they filed there.
+  let scope = null;
+  if (args.stash_project) scope = await projectIds(args.stash_project, args.stash_folder);
+  else if (args.stash_folder) throw new Error('stash_folder needs stash_project as well.');
 
   const limit = Math.min(Math.max(Number(args.limit) || 8, 1), 25);
   const q_embedding = query ? await embed(query) : null;
@@ -752,6 +949,7 @@ async function searchTools(args) {
     f_section: args.section || null,
     f_style: args.style || null,
     f_effect: args.effect || null,
+    f_ids: scope ? scope.ids.concat(-1) : null,
     ...rpcAccess(policy()),
     sort_by: 'newest',
     max_rows: stageCats ? Math.max(limit * 6, 60) : limit,
@@ -769,11 +967,15 @@ async function searchTools(args) {
   return {
     query: query || undefined,
     stage: stage || undefined,
+    stash_project: scope ? scope.project.name : undefined,
     found: results.length,
     results,
     note: results.length
       ? undefined
-      : 'Nothing saved matches this. Say so plainly rather than substituting an unrelated saved tool.',
+      : scope
+        ? 'Nothing filed in ' + scope.project.name + (args.stash_folder ? ' / ' + args.stash_folder : '') +
+          ' matches this. Search again without stash_project to look across the whole library.'
+        : 'Nothing saved matches this. Say so plainly rather than substituting an unrelated saved tool.',
   };
 }
 
@@ -828,6 +1030,11 @@ async function buildStack(args) {
   const project = String(args.project || '').trim();
   if (!project) throw new Error('project is required');
 
+  const scope = args.stash_project ? await projectIds(args.stash_project) : null;
+  if (scope && !scope.ids.length) {
+    return { project, stack: [], note: scope.project.name + ' has no skills filed yet. Add some at ' + APP_URL + '/projects, or call build_stack without stash_project.' };
+  }
+
   const q_embedding = await embed(project);
   const { data, error } = await db.rpc('search_links', {
     q: project,
@@ -837,6 +1044,7 @@ async function buildStack(args) {
     f_collection: args.collection || null,
     f_dead: false,
     f_works_with: null,
+    f_ids: scope ? scope.ids : null,
     ...rpcAccess(policy()),
     sort_by: 'newest',
     max_rows: 30,
@@ -846,7 +1054,7 @@ async function buildStack(args) {
 
   const candidates = (data || []).map(shape);
   if (!candidates.length) {
-    return { project, stack: [], note: 'Nothing in the library matches this project.' };
+    return { project, stack: [], note: scope ? 'Nothing filed in ' + scope.project.name + ' matches this.' : 'Nothing in the library matches this project.' };
   }
 
   const brief = candidates
@@ -1043,6 +1251,19 @@ async function reviewProject(args) {
   const stack = Array.isArray(args.stack) ? args.stack.map(String).slice(0, 60) : [];
   const goal = String(args.goal || '').trim();
 
+  // The member's own choices for this project are settled; advice builds on them.
+  let chosen = null;
+  if (args.stash_project) {
+    const { userId, project: p } = await projectFor(args.stash_project);
+    const loaded = await loadProject(userId, p, policy());
+    chosen = {
+      name: p.name,
+      lines: loaded.folders.flatMap((f) =>
+        f.items.filter((i) => !i.locked).map((i) => f.name + ': #' + i.link_id + ' ' + (i.link.title || '') + (i.note ? ' (' + i.note + ')' : ''))
+      ),
+    };
+  }
+
   // Retrieve against the project, the immediate goal, and the stack itself.
   // Three angles, because what they are building, what they are about to do,
   // and what they already use surface different parts of the library.
@@ -1099,12 +1320,15 @@ async function reviewProject(args) {
     '- Respect compatibility. Do not propose a macOS-only or React-only tool to a project that cannot use it.',
     '- impact is high only when it removes real work or replaces something unmaintained.',
     '- gaps must be honest. Naming a gap they should fill elsewhere is more useful than a forced match.',
+    '- If they have already chosen skills for this project, those are settled: do not suggest a tool that does the',
+    '  same job as one of them unless that one is unmaintained, and say so when you do.',
   ].join('\n');
 
   const user = [
     'Project: ' + project,
     goal ? 'About to work on: ' + goal : null,
     stack.length ? 'Currently uses: ' + stack.join(', ') : 'Current stack unknown.',
+    chosen ? 'Already chosen for this project in Stash (' + chosen.name + '):\n' + (chosen.lines.join('\n') || '(nothing filed yet)') : null,
     '',
     'Candidates from their saved library:',
     brief,
@@ -1116,6 +1340,8 @@ async function reviewProject(args) {
   } catch (e) {
     return {
       project,
+      stash_project: chosen?.name,
+      already_chosen: chosen ? chosen.lines : undefined,
       suggestions: candidates.slice(0, 5).map((l) => ({ tool: render(l) })),
       note: 'Relevant saved tools, unranked; the analysis step failed (' + e.message + ')',
     };
@@ -1132,10 +1358,129 @@ async function reviewProject(args) {
 
   return {
     project,
+    stash_project: chosen?.name,
     suggestions,
     already_covered: advice?.already_covered || [],
     gaps: advice?.gaps || [],
     considered: candidates.length,
+  };
+}
+
+/* ---------------------------------------------------------- project tools */
+
+/** What an agent needs of one skill to use it: enough to install it, and why it is in the project. */
+function briefOf(row) {
+  const r = render(row);
+  const out = {
+    id: r.id,
+    name: r.name,
+    url: r.url,
+    type: r.type,
+    role: r.role,
+    what_it_is: r.what_it_is,
+    install: r.install || null,
+    works_with: r.works_with,
+    avoid_when: r.avoid_when,
+    preview_image: r.preview_image,
+  };
+  if (r.not_installable) out.not_installable = r.not_installable;
+  if (r.warning_broken) out.warning_broken = r.warning_broken;
+  if (r.github?.activity) out.activity = r.github.activity;
+  return out;
+}
+
+async function listProjectsTool() {
+  const userId = member();
+  const all = await listProjects(userId);
+  return {
+    your_projects: all.map((p) => ({
+      name: p.name,
+      slug: p.slug,
+      description: p.description || undefined,
+      kind: templateOf(p.template).label,
+      folders: p.folders.map((f) => ({ folder: f.name, skills: f.count })),
+      skills: p.skills,
+      last_edited: p.updated_at,
+      url: APP_URL + '/projects/' + p.slug,
+    })),
+    note: all.length
+      ? 'Call get_project with one of these names to work from its skills.'
+      : 'No projects yet. The member makes them at ' + APP_URL + '/projects: one per thing they build, with folders for each part of it.',
+  };
+}
+
+async function getProjectTool(args) {
+  const { userId, project: p } = await projectFor(args.stash_project ?? args.project ?? args.name);
+  const loaded = await loadProject(userId, p, policy(), { columns: RENDER_COLUMNS });
+  const want = clean(args.folder, 40).toLowerCase();
+  let folders = loaded.folders;
+  if (want) {
+    folders = folders.filter((f) => f.name.toLowerCase() === want);
+    if (!folders.length) {
+      throw new Error('No folder "' + args.folder + '" in ' + p.name + '. Folders: ' + loaded.folders.map((f) => f.name).join(', ') + '.');
+    }
+  }
+  const full = args.detail === 'full';
+
+  return {
+    project: {
+      name: p.name,
+      slug: p.slug,
+      description: p.description || undefined,
+      kind: templateOf(p.template).label,
+      last_edited: p.updated_at,
+      url: APP_URL + '/projects/' + p.slug,
+    },
+    use_this_project:
+      'These are the skills and tools the member chose for ' + p.name + ', grouped by part of the work. Treat them as ' +
+      'the standard for this project: for frontend work reach for what is filed under the frontend folder, and so on, ' +
+      'and keep using the same ones in every session so the project stays consistent. Read why_here. Call how_to_use ' +
+      'on a skill before writing code with it. If a need falls outside every folder, say so, suggest something, and ' +
+      'once the member agrees, file it with add_to_project.',
+    folders: folders.map((f) => {
+      const open = f.items.filter((i) => !i.locked && i.row);
+      return {
+        folder: f.name,
+        focus: hintOf(f) || undefined,
+        skills: open.map((i) => ({
+          ...(full ? { ...render(i.row), quickstart: i.row.quickstart || null } : briefOf(i.row)),
+          why_here: i.note || undefined,
+        })),
+        empty: open.length ? undefined : 'Nothing filed here yet.',
+      };
+    }),
+    totals: { folders: loaded.folders.length, skills: loaded.skills },
+  };
+}
+
+async function addToProjectTool(args) {
+  const { userId, project: p } = await projectFor(args.stash_project);
+  const id = Number(args.id);
+  if (!Number.isSafeInteger(id)) throw new Error('id must be a tool id from search_tools.');
+
+  const { data: folders, error } = await db
+    .from('project_folders').select('id,name').eq('project_id', p.id).eq('user_id', userId).order('position');
+  if (error) throw new Error('Could not read the project. Try again.');
+  const want = clean(args.folder, 40).toLowerCase();
+  const folder = (folders || []).find((f) => f.name.toLowerCase() === want);
+  if (!folder) {
+    throw new Error(
+      'No folder "' + clean(args.folder, 40) + '" in ' + p.name + '. ' +
+      ((folders || []).length ? 'Folders: ' + folders.map((f) => f.name).join(', ') + '.' : 'It has no folders yet.') +
+      ' New folders are made at ' + APP_URL + '/projects/' + p.slug + '.'
+    );
+  }
+
+  const result = await addItem(userId, p.id, { folder_id: folder.id, link_id: id, note: args.note }, policy());
+  const { data: link } = await db.from('links').select('title').eq('id', id).maybeSingle();
+  return {
+    filed: true,
+    already_there: !!result.already || undefined,
+    tool: link?.title || '#' + id,
+    stash_project: p.name,
+    folder: folder.name,
+    effect: 'Every session that calls get_project for ' + p.name + ' now finds it under ' + folder.name + '.',
+    url: APP_URL + '/projects/' + p.slug,
   };
 }
 
@@ -1361,6 +1706,7 @@ async function saveTool(args) {
 
 async function callTool(name, args, auth) {
   if (PRO_TOOLS.has(name) && !auth.pro) {
+    if (['list_projects', 'get_project', 'add_to_project'].includes(name)) throw new Error(PROJECTS_PRO());
     throw new Error(
       name + ' is part of Stash ' + proLine() + ': AI recommendations built from the catalogue. ' +
       'Upgrade at ' + APP_URL + '/pricing. search_tools, get_tool, how_to_use and find_inspiration stay free.'
@@ -1377,6 +1723,9 @@ async function callTool(name, args, auth) {
     case 'compare_tools': return compareTools(args);
     case 'find_inspiration': return findInspiration(args);
     case 'ask_stash': return askStash(args);
+    case 'list_projects': return listProjectsTool();
+    case 'get_project': return getProjectTool(args);
+    case 'add_to_project': return addToProjectTool(args);
     case 'mark_used': {
       // The owner's provenance (project names, notes) lives on the shared row.
       // A member's adoption goes to their own My Stash instead.
@@ -1444,6 +1793,23 @@ async function handle(msg, auth) {
           '   search_tools or find_inspiration with the section argument, plus style to match the',
           '   site\'s look. Every entry lists the sections it helps with, its effects and its styles.',
           '',
+          ...(auth.pro && auth.userId
+            ? [
+                'STASH PROJECTS — KEEP EACH PROJECT CONSISTENT:',
+                'The member files the skills for each thing they build into a Stash project, split into folders',
+                '(Frontend, Backend, UI/UX, Content...). When they say which project they are working on, when',
+                'AGENTS.md or CLAUDE.md names a Stash project, or when the repo or directory name matches one from',
+                'list_projects, call get_project FIRST and work from its skills: they are the standard for that',
+                'project, chosen once so every session reaches for the same tools. Pass stash_project to',
+                'search_tools, build_stack or review_project to stay inside it. When the member agrees a new tool',
+                'belongs in the project, file it with add_to_project so the next session finds it.',
+                '',
+              ]
+            : [
+                'Stash projects (list_projects, get_project, add_to_project) are ' + PRO.name + ': if the member asks to',
+                'work from a saved project, say it needs ' + PRO.name + ' and carry on.',
+                '',
+              ]),
           'CHOOSING BETWEEN SIMILAR TOOLS:',
           'When several saved tools could fill the same slot, do not pick one silently. Call compare_tools',
           'and show the user the comparison — what each is best at, what it costs, and the question that',
@@ -1477,7 +1843,8 @@ async function handle(msg, auth) {
           'If a field is absent it was never captured. Say so rather than filling it in.',
           auth.canWrite
             ? 'You may save genuinely useful new finds with save_tool.'
-            : 'This connection is read-only.',
+            : 'This connection reads the shared catalogue; it cannot add to it.' +
+              (auth.pro && auth.userId ? ' It can file tools in the member\'s own projects with add_to_project.' : ''),
         ].join('\n'),
       });
 
@@ -1504,9 +1871,11 @@ async function handle(msg, auth) {
         },
       });
       return ok(id, {
-        tools: auth.canWrite
-          ? [...READ_TOOLS.map((t) => withHints(t, false)), ...WRITE_TOOLS.map((t) => withHints(t, true))]
-          : READ_TOOLS.map((t) => withHints(t, false)),
+        tools: [
+          ...READ_TOOLS.map((t) => withHints(t, false)),
+          ...MEMBER_TOOLS.map((t) => withHints(t, true)),
+          ...(auth.canWrite ? WRITE_TOOLS.map((t) => withHints(t, true)) : []),
+        ],
       });
     }
 
@@ -1630,7 +1999,7 @@ export async function GET(req) {
     transport: 'streamable-http (JSON-RPC over POST)',
     auth: 'OAuth sign-in (' + origin + '/.well-known/oauth-protected-resource), or Authorization: Bearer <your Stash key> from ' + origin + '/connect',
     capabilities: ['tools', 'resources', 'prompts', 'completions'],
-    tools: READ_TOOLS.map((t) => t.name),
+    tools: [...READ_TOOLS, ...MEMBER_TOOLS].map((t) => t.name),
     pro_tools: [...PRO_TOOLS],
     prompts: PROMPTS.map((p) => p.name),
     setup: origin + '/connect',

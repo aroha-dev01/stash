@@ -16,7 +16,7 @@ the Supabase project **Stash** (`soynjbihrhcxyaimptjl`).
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | the `sb_publishable_...` key |
 | `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL` | enrichment, the assistant and the Pro MCP tools |
 | `GITHUB_TOKEN` | optional, higher GitHub rate limits for repo stats |
-| `CRON_SECRET` | optional, Vercel signs the nightly refresh with it |
+| `CRON_SECRET` | required for the nightly refresh: Vercel signs its cron call with it, and `/api/cron/refresh` refuses every call without it (or `STASH_TOKEN`) |
 | `STASH_TOKEN` | optional owner token for scripts; never put it in a phone shortcut |
 | `MCP_OAUTH_SECRET` | optional, any long random string; seals MCP sign-in codes (`lib/oauth.js`). Unset, a key derived from `SUPABASE_SERVICE_ROLE_KEY` is used |
 | `GOOGLE_CLIENT_ID` | optional, the Google OAuth client ID (not the secret); switches on Google's own sign-in button, see below |
@@ -66,6 +66,35 @@ implies the other. The first curator has to be set in SQL:
 ```sql
 update public.profiles set is_admin = true, plan = 'pro' where email = '...';
 ```
+
+## Projects (Premium)
+
+`/projects` lets a Premium member make a project per thing they build, split
+into folders (Frontend, Backend, UI/UX...) from a template in
+`lib/projectTemplates.js`, and file catalogue entries in each folder. Their
+agent reads a project over MCP with `get_project` (see MCP.md).
+
+- Tables: `projects`, `project_folders`, `project_items`
+  (`supabase/migrations/20261111000007_projects.sql`). Every row carries
+  `user_id`, and composite foreign keys stop a folder or item sitting under
+  another member's project. RLS is on with no policies and no grants to `anon`
+  or `authenticated`, like every other table.
+- Limits: 30 projects, 12 folders a project, 40 skills a folder, 150 a project,
+  enforced by triggers as well as in `lib/projects.js`.
+- `lib/projects.js` is the only code that touches the tables; the web API
+  (`/api/projects/...`, through `lib/projectApi.js`) and the MCP server both
+  call it, and both check Premium first. A member who leaves Premium keeps
+  their projects; they are not served until they return.
+
+## Writes from other sites
+
+`proxy.js` refuses POST, PUT, PATCH and DELETE whose `Origin` or
+`Sec-Fetch-Site` says they came from anywhere but Stash's own pages, before
+any route runs. The session cookie is SameSite=Lax, which does not stop a
+sibling `*.aruo.dev` subdomain. `/api/mcp`, `/api/save`, `/api/cron`,
+`/api/backfill` and the OAuth token and registration endpoints are exempt:
+they authenticate with their own keys, and browser-based MCP clients call
+them from other origins.
 
 ## The iOS share sheet (curators only)
 

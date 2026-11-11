@@ -56,6 +56,7 @@ export default async function Upgrade({ searchParams }) {
     ...premiumKits.map((t) => [t.label, t.pitch.replace(/\.$/, '')]),
     [PRO.name + ' results over MCP', 'your agent’s searches cover everything you can open on the web'],
     ['AI recommendations in your agent', 'build_stack, compare_tools, review_project and ask_stash'],
+    ['Projects', 'file the skills for each thing you build into folders, and your agent works from them with get_project'],
     ['The Stash assistant', 'ask the library anything on the web, with answers that link to entries'],
   ];
 
@@ -65,6 +66,7 @@ export default async function Upgrade({ searchParams }) {
     ['MCP connection and search', 'Free collection only', 'Whole library'],
     ['Saved tools', 'Yes', 'Yes'],
     ['AI recommendations and the assistant', 'No', 'Yes'],
+    ['Projects your agent works from', 'No', 'Yes'],
   ];
 
   return (

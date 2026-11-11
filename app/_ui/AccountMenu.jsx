@@ -57,6 +57,7 @@ export default function AccountMenu({ viewer }) {
           </div>
           <nav aria-label='Account'>
             <Link href='/account' onClick={close}>Profile</Link>
+            <Link href='/projects' onClick={close}>Projects{viewer.isPro ? null : <span className='k-pro'>{PRO.name}</span>}</Link>
             <Link href='/explore' onClick={close}>Explore</Link>
             <Link href='/explore?saved=1' onClick={close}>Saved tools</Link>
             <Link href='/connect' onClick={close}>Connect your agent</Link>
