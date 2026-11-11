@@ -35,6 +35,15 @@ const nextConfig = {
           { key: 'Vercel-CDN-Cache-Control', value: 'no-store' },
         ],
       },
+      {
+        // The MCP consent page holds an Allow button. No other site may frame
+        // it and trick a member into pressing it.
+        source: '/oauth/:path*',
+        headers: [
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'none'" },
+        ],
+      },
     ];
   },
 };

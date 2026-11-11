@@ -18,6 +18,7 @@ the Supabase project **Stash** (`soynjbihrhcxyaimptjl`).
 | `GITHUB_TOKEN` | optional, higher GitHub rate limits for repo stats |
 | `CRON_SECRET` | optional, Vercel signs the nightly refresh with it |
 | `STASH_TOKEN` | optional owner token for scripts; never put it in a phone shortcut |
+| `MCP_OAUTH_SECRET` | optional, any long random string; seals MCP sign-in codes (`lib/oauth.js`). Unset, a key derived from `SUPABASE_SERVICE_ROLE_KEY` is used |
 | `GOOGLE_CLIENT_ID` | optional, the Google OAuth client ID (not the secret); switches on Google's own sign-in button, see below |
 
 For local work, copy `.env.example` to `.env.local`. Never put real keys in

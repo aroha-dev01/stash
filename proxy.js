@@ -20,20 +20,27 @@ const OPEN = [
   /^\/sitemap\.xml$/, /^\/robots\.txt$/,
   /^\/api\/catalog(\/|$)/,
   /^\/api\/mcp/, /^\/api\/save/, /^\/api\/cron\//, /^\/api\/backfill/,
+  // MCP sign-in (lib/oauth.js): discovery, registration and tokens answer
+  // agents, and the consent page asks a signed-out member to sign in itself.
+  /^\/\.well-known\//, /^\/api\/oauth\//, /^\/oauth\//,
   // Vercel BotID's challenge script, which every visitor's browser loads.
   /^\/149e9513-01fa-4fb0-aad4-566afd725d1b\//,
 ];
 
 // Crawlers that collect pages for AI training or AI answers. robots.txt asks
 // them to stay away; this turns away the ones that ask anyway. Agents working
-// for a member come in through MCP with a key instead.
+// for a member come in through MCP with a key instead, so the MCP server and
+// its sign-in are never filtered. Claude's own user agents are on this list,
+// and it used to answer them 403 on /api/mcp itself.
 const AI_CRAWLERS = /GPTBot|ChatGPT-User|OAI-SearchBot|ClaudeBot|Claude-User|Claude-SearchBot|anthropic-ai|CCBot|Bytespider|PerplexityBot|Perplexity-User|Amazonbot|meta-externalagent|meta-externalfetcher|FacebookBot|cohere-ai|cohere-training-data-crawler|Diffbot|ImagesiftBot|Omgilibot|omgili|Timpibot|YouBot|PetalBot|AI2Bot|Ai2Bot-Dolma|Applebot-Extended|DuckAssistBot|Kangaroo Bot|PanguBot|Scrapy|img2dataset|Webzio-Extended|MistralAI-User|Google-CloudVertexBot|TikTokSpider|Brightbot|SemrushBot-OCOB|webzio|Crawl4AI|FirecrawlAgent|Firecrawl/i;
+const AGENT_PATH = /^\/(robots\.txt$|api\/mcp(\/|$)|api\/oauth\/|\.well-known\/)/;
 
 // stash.aruo.dev is home. Pages on the old Vercel address move there, so
 // sign-in (whose Google button only works on its listed origins) and cookies
 // live on one domain. Never /api: agents are configured with the old MCP
-// address, and a redirect would drop their Authorization header. Never a
-// sign-in already under way (/auth, ?code=), whose cookies are on this host.
+// address, and a redirect would drop their Authorization header. Never
+// /.well-known, whose MCP sign-in metadata must name the host it is read on.
+// Never a sign-in already under way (/auth, ?code=), whose cookies are on this host.
 const OLD_HOST = 'stashkit.vercel.app';
 const HOME = 'https://stash.aruo.dev';
 
@@ -43,13 +50,14 @@ export async function proxy(request) {
     request.headers.get('host') === OLD_HOST &&
     !pathname.startsWith('/api/') &&
     !pathname.startsWith('/auth/') &&
+    !pathname.startsWith('/.well-known/') &&
     !pathname.startsWith('/149e9513-') &&
     !searchParams.has('code')
   ) {
     return NextResponse.redirect(HOME + pathname + search, 308);
   }
 
-  if (AI_CRAWLERS.test(request.headers.get('user-agent') || '') && request.nextUrl.pathname !== '/robots.txt') {
+  if (AI_CRAWLERS.test(request.headers.get('user-agent') || '') && !AGENT_PATH.test(pathname)) {
     return new NextResponse('Automated collection of Stash is not allowed. See /robots.txt.', { status: 403 });
   }
 

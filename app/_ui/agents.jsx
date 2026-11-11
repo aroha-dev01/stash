@@ -72,12 +72,16 @@ export const CLIENTS = [
     workflow: 'Add Stash as a custom connector and Claude can search it from any chat.',
     window: 'Claude',
     file: 'Settings, Connectors',
+    // Claude connectors sign in through Stash (lib/oauth.js): the member
+    // presses Connect, signs in and allows it, and Claude gets its own key.
+    signIn: true,
     steps: [
       <>In Claude, open <b>Settings</b>, then <b>Connectors</b>, then <b>Add custom connector</b>.</>,
-      <>Name it <b>Stash</b> and paste this address. Claude connectors take a URL only, so the key travels in it: treat the address like a password.</>,
+      <>Name it <b>Stash</b>, paste this address and press <b>Add</b>. There is no key to copy.</>,
+      <>Press <b>Connect</b>. Claude opens Stash: sign in, check the details and press <b>Allow</b>, and you are sent back to Claude.</>,
     ],
     reload: <>Start a new chat and switch Stash on from the tools menu.</>,
-    code: (url, key) => url + '?key=' + key,
+    code: (url) => url,
   },
   {
     key: 'windsurf',

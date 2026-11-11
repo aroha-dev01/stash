@@ -62,7 +62,9 @@ export default function Guide({ signedIn, name, mcpUrl, isPro, initialClient, we
   const used = (keys || []).filter((k) => k.last_used_at).sort((a, b) => b.last_used_at.localeCompare(a.last_used_at))[0] || null;
   const connected = fresh ? !!watched?.last_used_at : !!used;
   const shown = fresh ? watched : used;
-  const waiting = signedIn && keys?.length > 0 && !connected;
+  // A sign-in client makes its own key when the member presses Allow, so the
+  // page listens from the start rather than after a key is created here.
+  const waiting = signedIn && keys !== null && (keys.length > 0 || !!c.signIn) && !connected;
 
   useEffect(() => {
     if (!waiting) return;
@@ -128,9 +130,11 @@ export default function Guide({ signedIn, name, mcpUrl, isPro, initialClient, we
             word: 'Connected',
             line: 'Stash answered ' + (clientLabel(shown?.last_client) || 'your agent') + ' ' + ago(shown?.last_used_at) + ', using the key "' + shown?.name + '".',
           }
-        : hasKey
-          ? { tone: 'wait', word: 'Waiting for the first call', line: 'Add the config below, reload ' + c.name + ' and ask it something. This updates by itself.' }
-          : { tone: '', word: 'Not connected', line: 'Create a key below to connect your first agent.' };
+        : c.signIn
+          ? { tone: 'wait', word: 'Waiting for ' + c.name, line: 'Add the address below to ' + c.name + ' and press Connect. This updates by itself once it calls Stash.' }
+          : hasKey
+            ? { tone: 'wait', word: 'Waiting for the first call', line: 'Add the config below, reload ' + c.name + ' and ask it something. This updates by itself.' }
+            : { tone: '', word: 'Not connected', line: 'Create a key below to connect your first agent.' };
 
   return (
     <>
@@ -191,6 +195,7 @@ export default function Guide({ signedIn, name, mcpUrl, isPro, initialClient, we
               )}
             </li>
 
+            {c.signIn ? null : (
             <li data-done={hasKey ? '' : undefined}>
               <h3>Create a key for {c.name}</h3>
               <p>One key per app or machine, so you can revoke one without touching the rest.</p>
@@ -216,6 +221,7 @@ export default function Guide({ signedIn, name, mcpUrl, isPro, initialClient, we
                 </div>
               ) : null}
             </li>
+            )}
 
             <li>
               <h3>Add Stash to {c.name}</h3>
@@ -226,12 +232,12 @@ export default function Guide({ signedIn, name, mcpUrl, isPro, initialClient, we
               />
               <dl className='k-facts' style={{ paddingTop: 12 }}>
                 <div><dt>Remote MCP address</dt><dd style={{ textTransform: 'none' }}><code>{mcpUrl}</code></dd></div>
-                <div><dt>Your key</dt><dd style={{ textTransform: 'none' }}>{fresh ? 'Filled in above' : signedIn ? 'Create one in step 2' : 'After you sign in'}</dd></div>
+                <div><dt>Your key</dt><dd style={{ textTransform: 'none' }}>{c.signIn ? 'Made for ' + c.name + ' when you press Allow' : fresh ? 'Filled in above' : signedIn ? 'Create one in step 2' : 'After you sign in'}</dd></div>
                 <div><dt>Where it goes</dt><dd style={{ textTransform: 'none' }}>{c.file}</dd></div>
-                <div><dt>Sent as</dt><dd style={{ textTransform: 'none' }}>{c.key === 'claude' ? 'Part of the address' : 'Authorization: Bearer header'}</dd></div>
+                <div><dt>Sent as</dt><dd style={{ textTransform: 'none' }}>{c.signIn ? 'Sign-in from ' + c.name + ', nothing to paste' : 'Authorization: Bearer header'}</dd></div>
               </dl>
               {copied ? <p className='k-small k-dim'>Copied. Paste it into {c.file}. Stash shows Connected only once your agent actually calls it.</p> : null}
-              {!fresh ? <p className='k-small k-dim'>{PLACEHOLDER_KEY} is a placeholder. {signedIn ? 'Create a key in step 2 and it is filled in here.' : 'Sign in and create a key, and it is filled in here.'}</p> : null}
+              {!fresh && !c.signIn ? <p className='k-small k-dim'>{PLACEHOLDER_KEY} is a placeholder. {signedIn ? 'Create a key in step 2 and it is filled in here.' : 'Sign in and create a key, and it is filled in here.'}</p> : null}
             </li>
 
             <li>
@@ -309,7 +315,7 @@ export default function Guide({ signedIn, name, mcpUrl, isPro, initialClient, we
               </div>
               <div>
                 <dt>The config does not load</dt>
-                <dd>Make sure the address is exactly <b>{mcpUrl}</b> and that only one server is named <b>stash</b>. For Claude connectors, the key must be in the address.</dd>
+                <dd>Make sure the address is exactly <b>{mcpUrl}</b> and that only one server is named <b>stash</b>. For Claude connectors, paste the address without a key and press Connect: Claude signs in through Stash by itself.</dd>
               </div>
               <div>
                 <dt>Still waiting for the first call</dt>

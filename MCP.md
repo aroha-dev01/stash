@@ -16,8 +16,36 @@ A plain GET returns a health summary listing the tools.
 Every call needs a member's key. Members create keys on `/connect`, the setup
 guide, which shows the exact setup for Claude Code, Cursor, VS Code (Copilot),
 Claude and Windsurf with the key filled in. Send it as
-`Authorization: Bearer <key>`, or as `?key=` for clients that only take a URL
-(Claude's custom connectors).
+`Authorization: Bearer <key>`, or as `?key=` for clients that only take a URL.
+
+## Sign-in (OAuth), for Claude's custom connectors
+
+Claude's connectors (and any client following the MCP auth spec) connect with
+just the address: the member presses Connect, Stash's sign-in page opens, they
+sign in and press Allow, and the client gets a key of its own, named after the
+app and listed with the rest on `/connect`, where it can be revoked.
+`lib/oauth.js` is all of it:
+
+| Path | What it is |
+|---|---|
+| `/.well-known/oauth-protected-resource` (also `/api/mcp` under it) | RFC 9728: which server signs callers in. The 401 from `/api/mcp` points here in `WWW-Authenticate` |
+| `/.well-known/oauth-authorization-server` | RFC 8414: the endpoints below |
+| `/api/oauth/register` | Dynamic client registration (RFC 7591) |
+| `/oauth/authorize` | The member signs in and allows the app; `POST /api/oauth/authorize` is its Allow button |
+| `/api/oauth/token` | A code (or refresh token) in, a Stash key out |
+
+There is no table for it. Client ids, codes and refresh tokens are sealed with
+AES-256-GCM under `MCP_OAUTH_SECRET` (or, unset, a key derived from
+`SUPABASE_SERVICE_ROLE_KEY`; rotating either asks connected apps to register
+again, but their keys keep working). PKCE S256 is required, a code lasts five
+minutes, and the key a code buys is derived from it, so trading a code twice
+returns the same key instead of a second one. The 5-key limit applies; the
+consent page says so before the member presses Allow. Metadata names whichever
+host it is read on, so the old address works too.
+
+`proxy.js` never applies the AI-crawler filter to `/api/mcp`, `/api/oauth` or
+`/.well-known`: Claude's own user agents (`Claude-User`, `anthropic-ai`) are on
+its list, and it used to answer them 403 on the MCP server itself.
 
 Stash stores only a SHA-256 of each key, and a revoked key stops working on the
 next call. Each key records when it was last used and the `clientInfo.name` its

@@ -11,6 +11,7 @@ import { resolveKey, noteClient } from '@/lib/mcpkeys';
 import { policyFor, rpcAccess, canOpen } from '@/lib/access';
 import { PRO, proLine } from '@/lib/plans';
 import { waitFor } from '@/lib/guard';
+import { originOf } from '@/lib/oauth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -302,12 +303,12 @@ async function authorise(req) {
   const bearer = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : null;
   const p = req.nextUrl.searchParams;
   const given = bearer || p.get('key') || p.get('token');
-  if (!given) return { ok: false };
+  if (!given) return { ok: false, given: false };
 
   if (token() && given === token()) return { ok: true, admin: true, pro: true, canWrite: true, userId: null };
 
   const member = await resolveKey(given);
-  if (!member) return { ok: false };
+  if (!member) return { ok: false, given: true };
   return { ok: true, admin: member.isAdmin, pro: member.isPro, canWrite: member.isAdmin, userId: member.userId, keyId: member.keyId };
 }
 
@@ -1560,14 +1561,25 @@ async function handle(msg, auth) {
   }
 }
 
+/**
+ * 401 with the pointer MCP clients follow to sign in (RFC 9728): Claude's
+ * custom connectors read resource_metadata, find Stash's sign-in and send the
+ * member there. Without it they have nowhere to go.
+ */
+function unauthorised(req, given) {
+  const origin = originOf(req);
+  const challenge =
+    'Bearer realm="stash", resource_metadata="' + origin + '/.well-known/oauth-protected-resource/api/mcp"' +
+    (given ? ', error="invalid_token", error_description="The Stash key is wrong or revoked"' : '');
+  return NextResponse.json(
+    fail(null, -32001, 'Unauthorised: sign in when your agent asks, or connect with a Stash key from ' + origin + '/connect'),
+    { status: 401, headers: { 'www-authenticate': challenge } }
+  );
+}
+
 export async function POST(req) {
   const auth = await authorise(req);
-  if (!auth.ok) {
-    return NextResponse.json(
-      fail(null, -32001, 'Unauthorised: connect with your Stash key from ' + APP_URL + '/connect'),
-      { status: 401, headers: { 'www-authenticate': 'Bearer realm="stash"' } }
-    );
-  }
+  if (!auth.ok) return unauthorised(req, auth.given);
 
   let body;
   try {
@@ -1602,14 +1614,21 @@ export async function POST(req) {
   });
 }
 
-/** Plain GET is a health check, so you can eyeball it in a browser. */
+/**
+ * Plain GET is a health check, so you can eyeball it in a browser. A client
+ * asking for an event stream gets 405: Stash answers every call in the POST
+ * response, and the transport spec says to refuse the stream that way.
+ */
 export async function GET(req) {
-  const origin = req?.nextUrl?.origin || APP_URL;
+  if ((req.headers.get('accept') || '').includes('text/event-stream')) {
+    return new Response(null, { status: 405, headers: { allow: 'POST' } });
+  }
+  const origin = originOf(req);
   return NextResponse.json({
     server: SERVER,
     protocol: PROTOCOL,
     transport: 'streamable-http (JSON-RPC over POST)',
-    auth: 'Authorization: Bearer <your Stash key>. Create a key at ' + origin + '/connect',
+    auth: 'OAuth sign-in (' + origin + '/.well-known/oauth-protected-resource), or Authorization: Bearer <your Stash key> from ' + origin + '/connect',
     capabilities: ['tools', 'resources', 'prompts', 'completions'],
     tools: READ_TOOLS.map((t) => t.name),
     pro_tools: [...PRO_TOOLS],
