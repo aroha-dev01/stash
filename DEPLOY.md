@@ -166,6 +166,14 @@ makes copying by machine slow, visible in the logs and tied to one account.
   several database and Auth calls, so they must sit next to it; visitors
   still reach Vercel's nearest edge (Mumbai, Dubai...) first. If the database
   ever moves, move `regions` with it.
+- **Per-IP flood limits** (`lib/flood.js`, run first in `proxy.js`, free:
+  in memory, no Vercel Firewall rules). Before any session check or database
+  call, each IP gets per minute: 30 sign-in requests (`/login`, `/auth/*`,
+  `/oauth/*`), 300 API requests (`/api/*`, MCP included) and 600 pages, then
+  429 with `retry-after`. Counts are per server instance, so they cut floods
+  rather than meter people; the per-account allowances in `lib/guard.js` are
+  the exact ones. Vercel cron is never counted. Hosted agents reach MCP from
+  their providers' shared IPs, so raise `FLOOD.api` as members grow.
 - **DDoS.** Vercel mitigates network and volumetric floods automatically on
   every plan. Under a real attack, switch on Attack Challenge Mode
   (Firewall tab, or `vercel firewall attack-mode enable`); it challenges every

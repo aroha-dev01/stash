@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { floodClassOf, floodWait, ipOf } from './lib/flood.js';
 
 // Runs before every page and API request (Next 16 calls this Proxy; it used
 // to be Middleware). Two jobs:
@@ -71,6 +72,21 @@ function crossSiteWrite(request) {
 
 export async function proxy(request) {
   const { pathname, search, searchParams } = request.nextUrl;
+
+  // Floods first (lib/flood.js): before any redirect, session check or
+  // database call. Vercel's own cron is never counted.
+  if (!pathname.startsWith('/api/cron/')) {
+    const cls = floodClassOf(pathname);
+    const wait = floodWait(cls, ipOf(request));
+    if (wait) {
+      const message = 'Too many requests. Try again in ' + wait + ' seconds.';
+      const headers = { 'retry-after': String(wait), 'cache-control': 'no-store' };
+      return cls === 'page'
+        ? new NextResponse(message, { status: 429, headers })
+        : NextResponse.json({ error: message }, { status: 429, headers });
+    }
+  }
+
   if (
     request.headers.get('host') === OLD_HOST &&
     !pathname.startsWith('/api/') &&
