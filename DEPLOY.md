@@ -158,3 +158,19 @@ that includes them. Events never carry keys, search text or anything typed.
 
 None of this stops a paying member copying what they can see by hand; it
 makes copying by machine slow, visible in the logs and tied to one account.
+
+## Region and floods
+
+- **Region.** Functions run in `dub1` (Dublin, `vercel.json`), the same AWS
+  region as the database (Supabase `eu-west-1`, Ireland). Every page makes
+  several database and Auth calls, so they must sit next to it; visitors
+  still reach Vercel's nearest edge (Mumbai, Dubai...) first. If the database
+  ever moves, move `regions` with it.
+- **DDoS.** Vercel mitigates network and volumetric floods automatically on
+  every plan. Under a real attack, switch on Attack Challenge Mode
+  (Firewall tab, or `vercel firewall attack-mode enable`); it challenges every
+  visitor, so agents and the iOS shortcut stop working until it is off again.
+- **Keys cannot be guessed.** MCP and shortcut keys are 192 random bits,
+  stored only as SHA-256; OAuth client ids, codes and refresh tokens are
+  sealed with AES-256-GCM (`lib/oauth.js`); shared secrets are compared in
+  constant time (`lib/secrets.js`).
