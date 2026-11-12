@@ -52,8 +52,16 @@ Supabase's callback and Google's screen names this site instead of
    and `next.config.mjs` passes it to the browser, which needs it to draw the
    button; it is only passed when it has the shape of a client ID.
 
+The button's ID token is posted to `/auth/google`, and the server trades it
+with Supabase (`app/auth/google/route.js`), so a visitor's browser only talks
+to Google and stash.aruo.dev. Keep it that way: some networks cannot reach
+`*.supabase.co` at all (UAE carriers Etisalat and du blocked it by DNS in
+2025, Indian ISPs in 2026), and a browser-side call there fails with nothing
+in our logs.
+
 Unset, or when Google's script cannot load, the site falls back to the
-redirect sign-in. Showing the name "Stash" instead of a domain still needs
+redirect sign-in. That one does pass through `<project>.supabase.co`, so it
+cannot work on those networks. Showing the name "Stash" instead of a domain still needs
 Google brand verification under Google Auth Platform, Branding.
 
 ## Database

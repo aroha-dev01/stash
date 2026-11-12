@@ -1,15 +1,15 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
 import { GoogleIcon } from './icons';
 import { startGoogleSignIn } from './signin';
 import { track } from './track';
 
 // Google's own "Sign in with Google" button. The sign-in happens on this site
-// and Google hands back an ID token, which Supabase turns into a session
-// (signInWithIdToken). Because nobody is sent through Supabase's callback,
-// Google's screen names this site instead of <project>.supabase.co.
+// and Google hands back an ID token, which our server turns into a Supabase
+// session (app/auth/google, signInWithIdToken). Because nobody is sent through
+// Supabase's callback, Google's screen names this site instead of
+// <project>.supabase.co, and the browser never needs to reach supabase.co.
 //
 // It turns on when GOOGLE_CLIENT_ID is set (next.config.mjs passes it to the
 // browser), and the site's origin is one of that client's Authorized
@@ -70,10 +70,22 @@ export default function GoogleButton({
           callback: async ({ credential }) => {
             setMode('busy');
             setError(null);
-            const sb = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
-            const { error: failed } = await sb.auth.signInWithIdToken({ provider: 'google', token: credential, nonce: nonce.raw });
+            // Our server trades the token for a session (app/auth/google), so
+            // the browser never has to reach <project>.supabase.co, which some
+            // networks block.
+            let failed = null;
+            try {
+              const res = await fetch('/auth/google', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ credential, nonce: nonce.raw }),
+              });
+              if (!res.ok) failed = (await res.json().catch(() => null))?.error || 'Sign-in did not complete. Try again.';
+            } catch {
+              failed = 'Could not reach Stash. Check your connection and try again.';
+            }
             if (failed) {
-              setError(failed.message);
+              setError(failed);
               setMode('google');
               return;
             }
